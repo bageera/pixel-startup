@@ -152,11 +152,20 @@
                     <div class="bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-700 sticky top-0">
                         <h2 class="text-xl font-semibold mb-2 text-slate-200">Initial Position Map</h2>
                         <p class="text-sm text-slate-400 mb-4" id="mapInstruction">Select a character from the list to place them.</p>
-                        
+
                         <!-- Minimap container -->
                         <div class="relative mx-auto border-2 border-slate-600 rounded overflow-hidden shadow-inner bg-slate-900" style="width: 320px; height: 400px; cursor: crosshair;" onclick="handleMinimapClick(event)" id="minimapWrap">
                             <img id="officePreview" src="assets/oficina-placeholder.png" class="w-full h-full object-cover pixel-art opacity-60" draggable="false" alt="Office layout preview">
                             <div id="markersContainer" class="absolute inset-0 pointer-events-none"></div>
+                        </div>
+
+                        <!-- G22: environment selection -->
+                        <div class="mt-4 pt-4 border-t border-slate-700">
+                            <h3 class="text-sm font-bold text-slate-200 mb-2">Environment</h3>
+                            <div class="flex gap-2">
+                                <select id="envSelect" class="flex-1 bg-slate-900 border border-slate-600 text-slate-200 text-sm rounded px-2 py-2" onchange="applyEnvironmentSelection()"></select>
+                            </div>
+                            <p id="envStatus" class="text-xs text-slate-400 mt-2"></p>
                         </div>
                     </div>
 
@@ -361,6 +370,7 @@
         async function showDashboard() {
             document.getElementById('dashboardScreen').classList.remove('hidden');
             await loadAllData();
+            initEnvironmentSelector(); // G22: env catalog + current selection
             // Default select
             setMapBrush('terrain', 1); // Select Wall
             
@@ -373,6 +383,58 @@
         }
 
         // LOAD / SAVE from SERVER
+        // === G22 environment selector ===
+        async function initEnvironmentSelector() {
+            try {
+                const [envRes, configRes] = await Promise.all([
+                    fetch('/api/environments'),
+                    fetch('/api/config')
+                ]);
+                const envs = envRes.ok ? await envRes.json() : [];
+                const current = configRes.ok ? await configRes.json() : null;
+                const select = document.getElementById('envSelect');
+                if (!select) return;
+                select.innerHTML = '';
+                for (const env of envs) {
+                    const option = document.createElement('option');
+                    option.value = env.id;
+                    option.textContent = env.is_default || env.default
+                        ? env.name + ' (default)' : env.name;
+                    select.appendChild(option);
+                }
+                if (current && current.environment) select.value = current.environment;
+                document.getElementById('envStatus').textContent =
+                    'Active: ' + ((current && current.environment) || 'continental');
+            } catch (e) {
+                const status = document.getElementById('envStatus');
+                if (status) status.textContent = 'Environment catalog unavailable';
+            }
+        }
+
+        async function applyEnvironmentSelection() {
+            const envId = document.getElementById('envSelect').value;
+            const status = document.getElementById('envStatus');
+            try {
+                // Carry the full current config so this POST never resets agents/rooms
+                const configRes = await fetch('/api/config');
+                const config = await configRes.json();
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...config, environment: envId })
+                });
+                if (res.status === 401) {
+                    status.textContent = 'Session expired — login again';
+                    return;
+                }
+                const saved = await res.json();
+                status.textContent = 'Environment set: ' + saved.config.environment;
+            } catch (e) {
+                status.textContent = 'Failed to save environment';
+            }
+        }
+        // === G22 end ===
+
         async function loadAllData() {
             // API URL (localStorage - personal)
             const savedAPI = localStorage.getItem('pixel_ollama_api_url');

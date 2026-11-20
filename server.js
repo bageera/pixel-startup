@@ -140,7 +140,7 @@ app.use((req, res, next) => {
     if (full === ASSETS_DIR || !full.startsWith(ASSETS_DIR + path.sep)) {
       return res.status(404).end('Not found');
     }
-    if (/\.(png|jpg|jpeg|webp|gif|svg)$/i.test(full) && fs.existsSync(full)) {
+    if (/\.(png|jpg|jpeg|webp|gif|svg|json)$/i.test(full) && fs.existsSync(full)) {
       return res.sendFile(full);
     }
     return res.status(404).end('Not found');
@@ -184,6 +184,28 @@ const requireAuth = (req, res, next) => {
   return res.status(401).json({ error: 'authentication required' });
 };
 
+// === G22 environment selection (persisted in pixel-config.json; default continental) ===
+const ENVIRONMENTS_DIR = path.join(__dirname, 'assets', 'environments');
+
+const listEnvironmentManifests = () => {
+  try {
+    return fs.readdirSync(ENVIRONMENTS_DIR)
+      .filter(f => f.endsWith('.manifest.json'))
+      .map(f => {
+        try { return JSON.parse(fs.readFileSync(path.join(ENVIRONMENTS_DIR, f), 'utf8')); }
+        catch (e) { return null; } // a broken pack fails gracefully, never the server
+      })
+      .filter(Boolean);
+  } catch (e) { return []; }
+};
+
+const DEFAULT_ENVIRONMENT = 'continental';
+
+const currentEnvironment = () =>
+  (config && typeof config.environment === 'string' && config.environment) || DEFAULT_ENVIRONMENT;
+
+// === G22 end ===
+
 // Initial config: all agents available, activated based on checks
 let config = {
   agents: [
@@ -198,7 +220,8 @@ let config = {
     { name: "Reception", x: 320, y: 220 },
     { name: "Workstations", x: 320, y: 440 },
     { name: "Archives", x: 320, y: 680 }
-  ]
+  ],
+  environment: DEFAULT_ENVIRONMENT
 };
 
 const defaultAgents = JSON.parse(JSON.stringify(config.agents));
@@ -233,6 +256,18 @@ try {
   console.log('Using initial configuration');
 }
 
+// G22: environment selection always loads from pixel-config.json (both boot paths)
+try {
+  if (fs.existsSync(CONFIG_PATH)) {
+    const savedConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    if (typeof savedConfig.environment === 'string' && savedConfig.environment.trim()) {
+      config.environment = savedConfig.environment.trim();
+    }
+  }
+} catch (e) {
+  console.log('Environment selection not found; using continental');
+}
+
 const initialMapData = loadMapData() || {};
 if (Array.isArray(initialMapData.rooms) && initialMapData.rooms.length) {
   config.rooms = initialMapData.rooms;
@@ -253,8 +288,17 @@ if (!fs.existsSync(AGENTS_PATH)) {
 app.get('/api/config', (req, res) => {
   res.json({
     agents: config.agents,
-    rooms: config.rooms
+    rooms: config.rooms,
+    environment: currentEnvironment()
   });
+});
+
+// G22: environment pack catalog (data-driven — new packs need no backend change)
+app.get('/api/environments', (req, res) => {
+  res.json(listEnvironmentManifests().map(m => ({
+    id: m.id, name: m.name, art_style: m.art_style,
+    default: m.id === DEFAULT_ENVIRONMENT
+  })));
 });
 
 // LiteLLM AI proxy endpoint — OpenAI-compatible, authenticated; client systemPrompt
@@ -365,12 +409,17 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/config', requireAuth, (req, res) => {
+  const previous = config;
   config = req.body || {};
   if (!Array.isArray(config.agents)) {
     config.agents = defaultAgents;
   }
   if (!Array.isArray(config.rooms)) {
     config.rooms = defaultRooms;
+  }
+  // G22: environment survives partial saves (dashboard edits never erase the selection)
+  if (typeof config.environment !== 'string' || !config.environment.trim()) {
+    config.environment = (previous && previous.environment) || DEFAULT_ENVIRONMENT;
   }
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
   persistAgents(config.agents);

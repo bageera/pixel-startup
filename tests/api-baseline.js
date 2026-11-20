@@ -198,7 +198,51 @@ const stopServer = () => new Promise((resolve) => {
   // --- Persistent config + restart recovery ---
   r = await req('POST', '/api/config', { agents: [{ id: 0, name: 'Curator', role: 'Archivist', room: 'Archives', color: 0, x: 311, y: 681, state: 'idle', active: true }], rooms: [] }, { Authorization: `Bearer ${TOKEN}` });
   check('POST /api/config persists to disk', r.status === 200 && fs.existsSync(path.join(DATA_DIR, 'agents.json')));
+
+  // --- G22 environments ---
+  r = await req('GET', '/api/environments');
+  const envCatalog = JSON.parse(r.body);
+  check('GET /api/environments → 4 packs, continental default',
+    r.status === 200 && envCatalog.length === 4
+    && envCatalog.some(e => e.id === 'continental' && e.default)
+    && ['mechanic', 'pirate', 'treehouse'].every(id => envCatalog.some(e => e.id === id)));
+  r = await req('GET', '/assets/environments/continental.manifest.json');
+  let manifest = null;
+  try { manifest = JSON.parse(r.body); } catch (e) { /* malformed */ }
+  check('environment manifest served from /assets allowlist',
+    r.status === 200 && manifest && Array.isArray(manifest.collision)
+    && manifest.collision.length === 25 && manifest.collision.every(rows => rows.length === 20));
+  check('manifest anchors + workstations present per pack',
+    manifest && manifest.anchors && Array.isArray(manifest.workstations) && manifest.workstations.length > 0);
+  for (const id of ['mechanic', 'pirate', 'treehouse']) {
+    const m = await req('GET', `/assets/environments/${id}.manifest.json`);
+    const png = await req('GET', `/assets/environments/${id}.png`);
+    check(`pack ${id}: manifest + background load`, m.status === 200 && png.status === 200);
+  }
+  r = await req('GET', '/assets/environments/does-not-exist.manifest.json');
+  check('missing environment manifest → 404 (graceful)', r.status === 404);
+  r = await req('GET', '/api/config');
+  check('default environment is continental (first deployment)',
+    JSON.parse(r.body).environment === 'continental');
+  let cfg = JSON.parse((await req('GET', '/api/config')).body);
+  r = await req('POST', '/api/config', { ...cfg, environment: 'pirate' }, { Authorization: `Bearer ${TOKEN}` });
+  check('environment switch persists through POST /api/config',
+    r.status === 200 && JSON.parse(r.body).config.environment === 'pirate');
+  const legacyBody = { ...cfg };
+  delete legacyBody.environment; // legacy dashboard POST without an environment field
+  r = await req('POST', '/api/config', legacyBody, { Authorization: `Bearer ${TOKEN}` });
+  check('legacy config POST keeps environment selection (no erase)',
+    JSON.parse(r.body).config.environment === 'pirate');
   await stopServer();
+  const bootEnv = await startServer();
+  check('restart: server boots again (environment test)', !!bootEnv.startupMs);
+  r = await req('GET', '/api/config');
+  check('environment selection survives restart', JSON.parse(r.body).environment === 'pirate');
+  cfg = JSON.parse((await req('GET', '/api/config')).body);
+  await req('POST', '/api/config', { ...cfg, environment: 'continental' }, { Authorization: `Bearer ${TOKEN}` });
+  await stopServer();
+
+  // --- Post-environment restart recovery (roster reloaded, quirk intact) ---
   const boot2 = await startServer();
   check('restart: server boots again', !!boot2.startupMs);
   r = await req('GET', '/api/config');

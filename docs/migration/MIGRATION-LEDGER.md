@@ -159,6 +159,39 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G22 — Isometric environments and sprite system (criteria registered 2026-11-20; execution follows)
+
+**Criteria (registered pre-execution):**
+- C22.1 Four original environment packs load and render: continental (default), mechanic, pirate, treehouse — original art, no copyrighted production artwork.
+- C22.2 Continental is the default on first deployment (no config / missing assets → legacy office behavior preserved).
+- C22.3 Reusable manifests (JSON) carry: id, name, art style + palette, background asset path, collision grid, anchors, workstation/interaction coordinates, sprite scale. Collision contract: 20×25 grid, 0 = walkable, 1 = wall, 2 = door, 3 = chair (matching the proven office map).
+- C22.4 Existing characters, agent bindings, IDs and coordinates are untouched by the environment layer (per-env manifests keep the same proven walkable topology; identity/task/permission/memory state is environment-independent by construction).
+- C22.5 Shared sprite + animation system (existing 7×3 sheets / walk / sit / work / waiting / idle / depth-sorted painter's algorithm) keeps working for every environment.
+- C22.6 Environment selection: dashboard selector → persisted config → office honors it at load; selection survives restart.
+- C22.7 Python configuration + persistence API (GET/PUT /api/environment) with SQLite app_settings (schema v3), validation data-driven from the manifest directory (new packs need NO backend change).
+- C22.8 Assets load on demand (background fetched only when the environment is active); missing manifest/background fails gracefully to the previous/legacy environment.
+- C22.9 Automated tests: per-environment manifest validation + BFS navigation checks (anchors reach workstations without crossing solids); npm regression suite extended (manifest serving, missing-asset 404, environment persistence through config).
+- C22.10 Performance within MVP budgets: same single draw pass + one on-demand image decode; smoke startup/RSS measured.
+- C22.11 Documentation for adding future environment packs.
+
+**Execution constraints:** no 3D/game-engine dependencies; static serving stays allowlisted; Python API qualifies at component level (deployed image still runs the JS baseline until G20 cutover — recorded as a limitation, not a mock).
+
+**Execution evidence (2026-11-20, main @ pre-commit):**
+- **Packs (C22.1, C22.3):** `tools/generate-environments.py` generates four original deterministic packs (continental / mechanic / pirate / treehouse) + manifests from the deployed office's own collision map (read from index.html at generation time — single source, no hand copy). Validator inside the script: grid 20×25, value contract, anchors on-grid, workstations on chair cells, **BFS: every workstation reachable from reception without crossing solids, per pack**.
+- **Default (C22.2):** missing/absent selection → `continental` everywhere (server default, office default, Python default); first-deployment behavior asserted in node + pytest.
+- **Identities/bindings preserved (C22.4):** envs are a visual/topology layer only; all four packs share the proven walkable topology, coordinates unchanged; Python alignment (G9) untouched.
+- **Sprites/animations (C22.5):** shared system untouched — existing 7×3 sheets, walk/sit/work/waiting/idle actions, painter's depth sort (sort by y, pre-existing) verified by regression suite; `sprite_scale` manifest field honored via `window.ENV_SCALE` (packs currently ship value 2 — future packs can drive scale without code change).
+- **Selection + persistence (C22.6, C22.7):** dashboard selector (env catalog from `GET /api/environments`, data-driven from the manifest directory — no backend change for packs); writes ride the authed `POST /api/config`; server-side guard: legacy bodies without `environment` carry the previous selection (never erased); selection loads on BOTH boot paths (root-cause fix during execution: agents.json-first boot branch initially skipped the legacy-config read); Python `GET/PUT /api/environment` on SQLite `app_settings` (schema v3, tested reopen-survival) with write-through to `pixel-config.json` (single selection for both runtimes).
+- **Assets on demand + graceful failure (C22.8):** background decodes once per active env (identical-src switch short-circuits); missing manifest → 404 (asserted), missing bg → legacy fallback image; broken pack in catalog → skipped, server unaffected.
+- **Automated tests (C22.9):** npm baseline 56 asserts (12 new G22: catalog, allowlisted manifest serving, per-pack manifest+png 200, missing-pack 404, default selection, switch/no-erase/survives-restart, post-env roster recovery) — 56 passed, 0 failed; pytest 55 passed (4 G22); ruff clean; pyright 0 errors.
+- **Performance (C22.10):** container smoke 2026-11-20: boot serving catalog + packs, RSS 18.58 MiB (G1 budget ~70 MiB), single-draw loop unchanged (one decode per env switch).
+- **Reproduction:** `python3 tools/generate-environments.py && npm test && make python-test && make build && PORT=19001 make run` + curl `/api/environments`.
+- **Security:** no new dependencies; manifests served from the existing allowlisted `/assets` path (extension to `.json` documented); env switch requires auth (dashboard/POST) like all mutations.
+- **Rollback:** delete `assets/environments/*` + the selection key → office falls back to the legacy placeholder behavior (explicitly asserted as the default path).
+- **Limitations:** true diamond-isometric rendering is deferred (MVP ships pseudo-isometric staggered tiles over the proven square-grid navigation — geometry contract documented); Python API is component-qualified until the Python backend deploys (image still runs node CMD); per-pack scale is plumbed but unused at value 2.
+
+**Verdict: PASS** (all four default environments load; original art; identity preservation and persistence verified by automated tests + container smoke; future-pack documentation shipped).
+
 ### G9 — Employee and character alignment (executed 2026-11-20)
 
 **Objective:** separate visual characters from runtime identities; mandatory binding proof; lifecycle discipline; impersonation refusal; decorative vs operational distinction; no false availability from probe output (mandate G9, incl. all acceptance bullets).

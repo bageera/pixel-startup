@@ -319,8 +319,7 @@
 
         // Configuration
         const TILE_SIZE = 32;
-        const SCALE = 2;
-        
+        const SCALE = 2;        
         // Placeholder colors (replace with real sprites)
         const COLORS = {
             floor: '#d4c4b0',
@@ -533,7 +532,7 @@
                 ctx.save();
                 // Adjust to real size by applying scale
                 // El sprite es de 16x32, con SCALE=2 se dibujará a 32x64 píxeles
-                const renderScale = SCALE;
+                const renderScale = window.ENV_SCALE || SCALE;
                 
                 // Set origin at character feet (center of base)
                 ctx.translate(x, y);
@@ -1108,8 +1107,62 @@
         
         window.simulationStarted = true;
         window.characters = [];
-        
-        // Load configuration from SERVER (not localStorage) - shared for all users
+
+        // === G22 environments: manifest-driven packs, loaded on demand ===
+        window.ENV = { id: 'continental', manifest: null };
+        window.ENV_SCALE = null;
+
+        async function fetchEnvironmentManifest(envId) {
+            const res = await fetch('/assets/environments/' + encodeURIComponent(envId) + '.manifest.json');
+            if (!res.ok) throw new Error('environment manifest unavailable: ' + envId);
+            const manifest = await res.json();
+            if (!manifest || !Array.isArray(manifest.collision)) {
+                throw new Error('malformed environment manifest: ' + envId);
+            }
+            return manifest;
+        }
+
+        async function applyEnvironment(envId) {
+            if (envId && envId === window.ENV.id) return; // no duplicate decode
+            try {
+                const manifest = await fetchEnvironmentManifest(envId);
+                window.ENV = { id: manifest.id, manifest: manifest };
+                if (manifest.id !== 'continental') {
+                    // Non-default packs own their topology; the dashboard-edited
+                    // continental collision layout keeps existing precedence.
+                    COLLISION_MAP = manifest.collision;
+                    localStorage.setItem('pixel_env_collision', JSON.stringify(manifest.collision));
+                }
+                if (typeof manifest.sprite_scale === 'number' && manifest.sprite_scale !== SCALE) {
+                    window.ENV_SCALE = manifest.sprite_scale;
+                } else {
+                    window.ENV_SCALE = null;
+                }
+                if (manifest.anchors) window.ENV_ANCHORS = manifest.anchors;
+                if (manifest.background) {
+                    const img = spriteManager.sprites.background;
+                    img.onerror = () => { console.warn('Environment background missing; legacy fallback'); };
+                    img.src = manifest.background; // decode happens once, on demand
+                }
+                // Room quick-nav points follow the environment anchors
+                if (window.ENV_ANCHORS) {
+                    const anchors = window.ENV_ANCHORS;
+                    const byName = (name) => anchors[String(name).toLowerCase()];
+                    window.roomsInfo = (window.roomsInfo || []).map(r => {
+                        const a = byName(r.name);
+                        return a ? { ...r, x: a[0], y: a[1] } : r;
+                    });
+                    window.environmentLabel = (manifest.name || manifest.id);
+                }
+                console.log('Environment applied:', manifest.name || manifest.id);
+            } catch (e) {
+                // Graceful: keep the previous/legacy environment, never block the office
+                console.warn('Environment switch failed, keeping current:', e.message);
+            }
+        }
+        // === G22 end ===
+
+// Load configuration from SERVER (not localStorage) - shared for all users
         async function loadConfig() {
             window.characters = [];
 
@@ -1146,7 +1199,11 @@
 
                 const response = await fetch('/api/config');
                 const config = await response.json();
-                
+
+                // G22: honor the persisted environment (default continental) before placing agents
+                await applyEnvironment(
+                    (config && typeof config.environment === 'string' && config.environment) || 'continental');
+
                 for (let i = 0; i < 6; i++) {
                     let charConfig = config.agents.find(a => a.id === i);
                     
@@ -1348,10 +1405,13 @@
         } catch(e) { }
 
         if (window.roomsInfo.length === 0) {
+            // G22: anchors default from the active environment manifest when present
+            const envAnchors = (window.ENV && window.ENV.manifest && window.ENV.manifest.anchors) || null;
+            const anchorAt = (key, fx, fy) => (envAnchors && envAnchors[key]) || [fx, fy];
             window.roomsInfo = [
-                { id: 1, name: 'Reception', x: 10, y: 7 },
-                { id: 2, name: 'Workstations', x: 10, y: 14 },
-                { id: 3, name: 'Archives', x: 10, y: 21 }
+                { id: 1, name: 'Reception', x: anchorAt('reception', 10, 7)[0],  y: anchorAt('reception', 10, 7)[1] },
+                { id: 2, name: 'Workstations', x: anchorAt('workstations', 10, 14)[0], y: anchorAt('workstations', 10, 14)[1] },
+                { id: 3, name: 'Archives', x: anchorAt('archives', 10, 21)[0], y: anchorAt('archives', 10, 21)[1] }
             ];
         }
 

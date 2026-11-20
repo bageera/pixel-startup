@@ -97,6 +97,14 @@ MIGRATIONS: dict[int, list[str]] = {
         # G9: binding provenance (which surface/harness evidence produced the binding)
         "ALTER TABLE runtime_bindings ADD COLUMN provenance TEXT NOT NULL DEFAULT ''",
     ],
+    3: [
+        # G22: environment selection persists through the Python backend
+        """CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+    ],
 }
 
 EMPLOYEE_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {

@@ -8,13 +8,17 @@ G4 criteria covered here:
 - Docs endpoints disabled for the candidate backend (G2 hardening parity).
 """
 
+import json
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from pixel_startup.api import environment as environment_api
 from pixel_startup.api import health
 from pixel_startup.config import Settings, load_settings
 from pixel_startup.log import logger, setup_logging
@@ -24,6 +28,7 @@ from pixel_startup.persistence.store import (
     AuditStore,
     EmployeeStore,
     OfficePersistenceProvider,
+    SettingsStore,
     TaskStore,
     align_employee_roster,
 )
@@ -75,7 +80,6 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
 
     Deliberately NOT activated — the deployed JS stack stays the active
     persistence provider until cutover (G20)."""
-    import os
 
     db = Database(os.path.join(settings.pixel_data_dir, "pixel_startup.sqlite3"))
     version = db.migrate()
@@ -107,6 +111,21 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
                 },
             }
         )
+    # G22: environment selection — Python store authoritative; seed from the JS
+    # config file on first boot (single selection for both runtimes).
+    settings_store = SettingsStore(db)
+    if settings_store.get("environment") is None:
+        seed = environment_api.DEFAULT_ENVIRONMENT
+        config_path = Path(settings.pixel_data_dir) / "pixel-config.json"
+        if config_path.exists():
+            try:
+                data = json.loads(config_path.read_text())
+                if isinstance(data.get("environment"), str) and data["environment"].strip():
+                    seed = data["environment"].strip()
+            except (OSError, ValueError):
+                pass  # unreadable config keeps the default
+        settings_store.set("environment", seed)
+    container.providers["settings"] = settings_store
     container.registry.register(
         ProviderRegistration(
             provider_id="pixel_startup_sqlite",
@@ -232,6 +251,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.container = Container()
     app.state.ready = False
     app.include_router(health.router)
+    app.include_router(environment_api.router)
 
     @app.exception_handler(HTTPException)
     async def _http_exc(_: Request, exc: HTTPException) -> JSONResponse:

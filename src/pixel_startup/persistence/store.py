@@ -292,6 +292,31 @@ class ApprovalStore:
         return dict(found) if found else None
 
 
+class SettingsStore:
+    """G22: app-level settings (environment selection) in the app_settings table."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def get(self, key: str) -> str | None:
+        row = self.db.conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else None
+
+    def set(self, key: str, value: str) -> None:
+        self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.conn.execute(
+                "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (key, value, _now()),
+            )
+            self.db.conn.execute("COMMIT")
+        except Exception:
+            self.db.conn.execute("ROLLBACK")
+            raise
+
+
 class AuditStore:
     def __init__(self, db: Database) -> None:
         self.db = db
