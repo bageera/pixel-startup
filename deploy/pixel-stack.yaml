@@ -94,7 +94,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: backend-python
-          image: ghcr.io/bageera/pixel-startup-python:latest
+          image: ghcr.io/bageera/pixel-startup-backend:latest
           ports: [{ containerPort: 19000 }]
           envFrom:
             - secretRef: { name: pixel-secrets }

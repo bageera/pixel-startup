@@ -50,7 +50,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/bageera/pixel-startup-python
+          images: ghcr.io/bageera/pixel-startup-backend
           # main -> latest (+ main); a v1.2.3 tag -> 1.2.3 + latest
           tags: |
             type=raw,value=main

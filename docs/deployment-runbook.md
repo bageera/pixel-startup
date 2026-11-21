@@ -2,8 +2,8 @@
 
 ## Containers
 - Combined current image: `ghcr.io/bageera/pixel-startup:latest` (JS baseline, 332 MB).
-- Python production container: `Dockerfile.python` → `ghcr.io/bageera/pixel-startup-python` (uv, non-root UID 1001, healthcheck on `/healthz`; measured 239 MB).
-- Build: `docker build -f Dockerfile.python -t ghcr.io/bageera/pixel-startup-python:latest .`
+- Python production container: `Dockerfile.python` → `ghcr.io/bageera/pixel-startup-backend` (uv, non-root UID 1001, healthcheck on `/healthz`; measured 239 MB).
+- Build: `docker build -f Dockerfile.python -t ghcr.io/bageera/pixel-startup-backend:latest .`
 
 ## Kubernetes (deploy/pixel-stack.yaml)
 - Single PVC `pixel-data` (5Gi) shared by both deployments; **exactly one backend may hold it read-write at a time** — cutover sequence below enforces the single-writer window.

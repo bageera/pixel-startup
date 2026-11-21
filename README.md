@@ -29,7 +29,7 @@ A pixel office operated by a **Python backend** (FastAPI: office state, delegati
 - **Chief of Staff**: `GET /api/v1/chief/advise` (office + public-repo context through your LiteLLM provider), delegated tasks with an LLM plan draft, owner-only review, and independent verify-before-done (`verified` status; never a re-dispatch).
 - **Honest integrations**: Hermes + OpenClaw presence, Mattermost/email comms, ChromaDB memory, MinIO storage — offline until configured, never fabricated.
 - **Password-protected dashboard** (`dashboard.html`) to edit agents, rooms and collision maps without touching code.
-- **CI**: every push to `main` runs the full gate (pytest/ruff/pyright/pip-audit + node tests) and publishes `ghcr.io/bageera/pixel-startup-python` (`latest` + semver tags).
+- **CI**: every push to `main` runs the full gate (pytest/ruff/pyright/pip-audit + node tests) and publishes `ghcr.io/bageera/pixel-startup-backend` (`latest` + semver tags).
 
 ## 🧱 Folder map
 
@@ -145,7 +145,7 @@ See [CREDITS.md](CREDITS.md) for a handy table you can keep updated.
 
 ## 📦 Deploy notes
 
-- **CI publishes the image**: push to `main` → `ghcr.io/bageera/pixel-startup-python:latest`; a `v*` tag → `1.2.0` + `latest` (workflow: `.github/workflows/python-image.yml`, zero secrets — uses `GITHUB_TOKEN`). Pulling hosts: `docker login ghcr.io` once, then `docker pull ghcr.io/bageera/pixel-startup-python:latest`.
+- **CI publishes the image**: push to `main` → `ghcr.io/bageera/pixel-startup-backend:latest`; a `v*` tag → `1.2.0` + `latest` (workflow: `.github/workflows/python-image.yml`, zero secrets — uses `GITHUB_TOKEN`). Pulling hosts: `docker login ghcr.io` once, then `docker pull ghcr.io/bageera/pixel-startup-backend:latest`.
 - Makefile shortcuts: `make python-setup`, `make python-test` (the full gate), `make test` (node), `make build`/`make run`/`make push-image` (node-era container), `make tag` (annotated SemVer tag from `package.json`), `make contracts` (node ⇄ python fixture parity).
 - Deployment manifests: `deploy/pixel-stack.yaml` (both pods inject `pixel-secrets` via `envFrom`; secrets rule: values never in chat/docs, `[REDACTED]` in anything tracked).
 - Releases: version lives in `package.json` + `pyproject.toml` (kept in sync with `uv.lock`); fold `CHANGELOG.md` `[Unreleased]` **before** tagging.
