@@ -216,7 +216,10 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 **mdrc: BLOCKED** — binary not installed on this host; sqlite-mdr ships a research pack/unpack *library*, not a qualified production CLI. Per mandate the verified conventional path is retained; mdrc may only replace it after shipping a qualified CLI + restore guarantees. Never replaced the known-good with an unverified archive.
 **No production deployment performed.** **Verdict: PASS** (clean build, deployment test, backup/restore pass; rollback documented in `docs/deployment-runbook.md`).
 
-### G20 — JavaScript-to-Python cutover (2026-11-21; **cut-over EXECUTED**, local)
+### G20 — JavaScript-to-Python cutover (2026-11-21; **cut-over EXECUTED and IMAGE PUBLISHED**)
+
+**Deploy (owner: "deploy"):** `3857e3c` pushed to origin; **`ghcr.io/bageera/pixel-startup-python:latest` = sha256:7fe24e840df5bcf5a571b92b6214cdc3cf8f4d22c2a197a36bdc0ebb26f354de** (239 MB, includes the gateway cut-over). Container smoke: boot ~10 s to listening, `/healthz` 200, 16 providers, logs clean. Pulling hosts: `kubectl apply -f deploy/pixel-stack.yaml` (public `pixel-office` Service → python; node internal-only `pixel-legacy-node`; python proxies un-migrated routes through it).
+
 
 **Owner authorization:** "lets deprecate the node" — the G20 activation decision recorded here per the standing invariant ("activation is the cutover decision, recorded in the ledger when Jon authorizes").
 **Strangler flip:** `api/gateway.py` catch-all (registered LAST — native routes always win) fronts the entire `/`+`/api` surface: unimplemented routes proxy to the deprecated node (`NODE_UPSTREAM`) with cookie/bearer/header passthrough (incl. Set-Cookie so node's `/api/auth/login` keeps issuing sessions), or answer an honest 501 deprecation envelope when no upstream is set; the G2-hardened node files (`/server.js`, `/.env`, `/package.json`) stay 404 and never proxy; upstream unreachable → 502.
