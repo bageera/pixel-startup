@@ -19,7 +19,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from pixel_startup.api import capabilities, chief, config_v1, gateway, health, office_compat, office_state
+from pixel_startup.api import (
+    capabilities,
+    chief,
+    config_v1,
+    gateway,
+    health,
+    office_compat,
+    office_state,
+)
 from pixel_startup.api import environment as environment_api
 from pixel_startup.config import Settings, load_settings
 from pixel_startup.log import logger, setup_logging

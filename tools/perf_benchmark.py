@@ -7,7 +7,6 @@ employees (1/5/10/25), failure-injection behavior, and restart recovery.
 No speculative targets: printed table is pasted into the migration ledger.
 """
 
-import hashlib
 import json
 import os
 import statistics

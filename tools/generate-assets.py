@@ -11,6 +11,7 @@ Deterministic (seeded). Re-run after editing the collision/room layout.
 Keep assets/characters/char_2_original.png = intact pre-customization sheet.
 """
 import os
+
 from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,6 +73,7 @@ LEAF_HI = (84, 176, 106)
 POT = (124, 74, 45)
 
 import random
+
 rng = random.Random(42)
 
 
