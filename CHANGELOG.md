@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 - **README rewritten for the v1.2.0 reality:** python backend first (uv/uvicorn run steps), the 🧑‍💼 onboarding checklist (secrets keys per integration + A2A enable), backend API table (chief/delegate routes), environments section, CI deploy notes; node-era deploy prose retired to the CI publish flow.
+- **Dashboard modernized (G25):** 32-bit chrome over the 8-bit pixel art layer — truecolor depth (alpha/glass/gradients/glow) via one CSS-variable theme (deep-space background, sky→violet accents); sprites and the collision grid stay `image-rendering: pixelated`; fixed the `scrolelbar` typo. New backend ops strip reads the api/v1 surface (`GET /api/v1/health/services` + `GET /api/v1/office/state`) and degrades honestly to "python backend not reachable" in node-only dev mode.
 
 ## [1.2.0] - 2026-11-21
 

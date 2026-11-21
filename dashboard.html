@@ -6,24 +6,70 @@
     <title>Pixel Office Dashboard — Pixel Startup</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        /* G25 dashboard modernization: 32-bit chrome (truecolor depth: alpha, gradients, glow)
+           over an intentionally 8-bit pixel ART layer (sprites + collision grid stay
+           `image-rendering: pixelated`). The startup journey: retro roots, richer climb. */
         :root {
             --office-bg-url: url('assets/oficina-placeholder.png');
+            --bg-0: #070b14;
+            --bg-1: #0b1424;
+            --panel: linear-gradient(180deg, rgba(26, 38, 66, .92), rgba(14, 22, 40, .95));
+            --panel-soft: linear-gradient(180deg, rgba(22, 32, 58, .85), rgba(13, 20, 36, .9));
+            --edge: rgba(125, 160, 255, .22);
+            --edge-bright: rgba(125, 170, 255, .45);
+            --accent: #38bdf8;
+            --accent-2: #a78bfa;
+            --ok: #34d399;
+            --warn: #fbbf24;
+            --bad: #fb7185;
+            --text: #e2e8f0;
+            --text-dim: #8b98b8;
         }
-        body { background: #1a1a2e; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(circle at 18% -10%, rgba(56, 189, 248, .10) 0%, transparent 55%),
+                radial-gradient(circle at 85% 115%, rgba(167, 139, 250, .10) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-1), var(--bg-0));
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+        }
+        /* Glass panels + header (replaces flat slate fills in place) */
+        .bg-slate-800 { background: var(--panel) !important; border-color: var(--edge) !important; }
+        .bg-slate-900 { background: rgba(7, 11, 20, .72) !important; border-color: var(--edge) !important; }
+        .bg-slate-700 { background: rgba(30, 44, 74, .8) !important; }
+        header.bg-slate-800 {
+            background: linear-gradient(180deg, rgba(23, 34, 60, .88), rgba(12, 19, 34, .92)) !important;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--edge-bright) !important;
+        }
+        .bg-\[\#0f0f1a\] { background: linear-gradient(180deg, var(--bg-1), var(--bg-0)) !important; }
+        header h1 { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 0 28px rgba(56, 189, 248, .25); }
+        .text-slate-400, .text-slate-300 { color: var(--text-dim) !important; }
+        /* Accented buttons: truecolor gradients + glow */
+        .bg-blue-600 { background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important; box-shadow: 0 2px 14px rgba(56, 189, 248, .30); }
+        .bg-blue-600:hover { box-shadow: 0 2px 22px rgba(56, 189, 248, .45); }
+        .bg-purple-600 { background: linear-gradient(135deg, var(--accent-2), #6d5cd8) !important; box-shadow: 0 2px 14px rgba(167, 139, 250, .30); }
+        .bg-green-600 { background: linear-gradient(135deg, #22c58e, #0ea56e) !important; box-shadow: 0 2px 14px rgba(52, 211, 153, .30); }
+        /* Tabs */
+        .tab-active { border-bottom: 2px solid transparent; border-image: linear-gradient(90deg, var(--accent), var(--accent-2)) 1; color: var(--accent); text-shadow: 0 0 12px rgba(56, 189, 248, .4); }
+        .tab-inactive { color: var(--text-dim); }
+        .tab-inactive:hover { color: var(--text); }
         .pixel-art {
             image-rendering: pixelated;
         }
         .minimap-marker {
             transition: all 0.2s;
         }
-        
+
         .grid-container {
             display: grid;
             grid-template-columns: repeat(20, 20px);
             grid-template-rows: repeat(25, 20px);
             gap: 1px;
-            background: #333;
-            border: 2px solid #555;
+            background: #1c2438;
+            border: 2px solid var(--edge-bright);
+            box-shadow: 0 0 24px rgba(56, 189, 248, .12);
             width: fit-content;
             position: relative;
         }
@@ -56,16 +102,22 @@
         .cell-2 { background: rgba(234, 179, 8, 0.6); } /* Door (Amarillo) */
         .cell-3 { background: rgba(34, 197, 94, 0.6); } /* Chair/Furniture (Green) */
 
-        /* Custom scrolelbar */
-        ::-webkit-scrolelbar { width: 8px; }
-        ::-webkit-scrolelbar-track { background: #1a1a2e; }
-        ::-webkit-scrolelbar-thumb { background: #4a5568; border-radius: 4px; }
-        ::-webkit-scrolelbar-thumb:hover { background: #718096; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-0); }
+        ::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, .35); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(56, 189, 248, .55); }
 
-        /* Activate tabs */
-        .tab-active { border-bottom: 2px solid #60a5fa; color: #60a5fa; }
-        .tab-inactive { color: #9ca3af; }
-        .tab-inactive:hover { color: #d1d5db; }
+        /* Backend ops strip (api/v1): services + office roster at a glance */
+        #backendStrip {
+            display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+            font-size: 11px; color: var(--text-dim);
+            padding: 8px 16px;
+            background: var(--panel-soft);
+            border-bottom: 1px solid var(--edge);
+        }
+        #backendStrip .svc b { color: var(--text); font-weight: 600; }
+        #backendStrip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; box-shadow: 0 0 8px currentColor; }
     </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex flex-col font-sans relative">
@@ -132,6 +184,12 @@
                     Collisions & Rooms (AI)
                 </button>
             </div>
+        </div>
+
+        <!-- BACKEND STRIP (api/v1 ops view: services + roster, honest when offline) -->
+        <div id="backendStrip" class="shrink-0">
+            <span style="font-weight:600;color:var(--text);">Backend</span>
+            <span id="backendStripBody" style="display:flex;flex-wrap:wrap;gap:8px 16px;">checking…</span>
         </div>
 
         <!-- CONTENT AREA -->
@@ -388,11 +446,36 @@
             }
         }
 
+        // === G25 backend ops strip: api/v1 services + office roster (honest offline) ===
+        async function loadBackendOps() {
+            const body = document.getElementById('backendStripBody');
+            if (!body) return;
+            const esc2 = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            try {
+                const [svcRes, stateRes] = await Promise.all([
+                    fetch('/api/v1/health/services'),
+                    fetch('/api/v1/office/state').then(r => r.ok ? r.json() : null).catch(() => null)
+                ]);
+                if (!svcRes.ok) throw new Error('services http ' + svcRes.status);
+                const svc = await svcRes.json();
+                const stateColor = { active: 'var(--ok)', qualified: 'var(--accent)', candidate: 'var(--warn)', registered: 'var(--text-dim)' };
+                const svcRows = (svc.services || []).map(s =>
+                    `<span class="svc" title="${esc2(s.state)} · ${esc2(String(s.observed !== null))}"><span class="dot" style="color:${s.connected ? stateColor[s.state] || 'var(--accent)' : 'var(--bad)'};background:currentColor;"></span>${esc2(s.id)}${s.configured ? '' : ' <i style="opacity:.6;">offline</i>'}</span>`
+                ).join('');
+                const roster = stateRes && stateRes.employees
+                    ? ` <span class="svc" title="office roster (observed)">👥 ${stateRes.employees.length} in roster</span>` : '';
+                body.innerHTML = svcRows + roster;
+            } catch (e) {
+                body.innerHTML = '<span class="svc" style="color:var(--warn);">● python backend (api/v1) not reachable from this origin — node-only dev mode; office/compat APIs live</span>';
+            }
+        }
+
         async function showDashboard() {
             document.getElementById('dashboardScreen').classList.remove('hidden');
             await loadAllData();
             initEnvironmentSelector(); // G22: env catalog + current selection
             loadMoveIn(); // G24: readiness + startup direction/goals
+            loadBackendOps(); // G25: api/v1 services + roster strip
             // Default select
             setMapBrush('terrain', 1); // Select Wall
             
