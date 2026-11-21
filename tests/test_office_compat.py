@@ -402,6 +402,34 @@ def test_gateway_hardening_encoded_paths_and_redirects(tmp_path, monkeypatch):
     anyio.run(drive)
 
 
+def test_presence_honest_offline_without_hermes_home(tmp_path, monkeypatch):
+    """P2/P5: an unmounted hermes home is OFFLINE-truthful, never fabricated online."""
+
+    async def drive():
+        data = tmp_path / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        (data / "agents.json").write_text(json.dumps(AGENTS))
+        app = create_app(
+            Settings(pixel_data_dir=str(data), hermes_home=str(tmp_path / "no-such-hermes"))
+        )
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://t"
+            ) as c:
+                body = (await c.get("/api/presence")).json()
+                assert body["hermes"]["online"] is False
+                assert body["hermes"]["gateway"]["state"] == "offline"
+                assert body["agents"] == []  # no roster invented
+                assert body["openclaw"]["online"] is False
+                state = (await c.get("/api/v1/office/state")).json()
+                obs = next(o for o in state["observations"] if o["provider_id"] == "hermes_home")
+                # observation truthful: explicit probed OFFLINE report, labeled obs-poll
+                assert obs["source"] == "observed-poll"
+                assert obs["observed"] and obs["observed"]["online"] is False
+
+    anyio.run(drive)
+
+
 def test_node_upstream_absent_leaves_mvp_native(tmp_path):
     """NODE_UPSTREAM removal qualification: every MVP route answers with node STOPPED."""
 

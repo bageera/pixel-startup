@@ -33,7 +33,12 @@ spec:
           ports: [{ containerPort: 19000 }]
           envFrom:
             - secretRef: { name: pixel-secrets }   # keys: DASHBOARD_PASSWORD, PIXEL_SESSION_SECRET, PIXEL_API_TOKEN
-          volumeMounts: [{ name: data, mountPath: /app/data }]
+          env:
+            - name: HERMES_HOME   # read-only hermes home mount (live presence until retirement)
+              value: /hermes-home
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+            - { name: hermes-home, mountPath: /hermes-home, readOnly: true }
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits:   { cpu: "1",  memory: 512Mi }
@@ -48,6 +53,8 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim: { claimName: pixel-data }
+        - name: hermes-home   # populated on the node hosting this pod (runbook: hermes home copy)
+          hostPath: { path: /data/hermes-home, type: Directory }
 ---
 # G20 CUT-OVER: the Python backend is the public office surface; node is
 # deprecated (strangler upstream on the internal-only service below).
@@ -94,7 +101,10 @@ spec:
           env:
             - name: NODE_UPSTREAM   # deprecated node, reached through the internal service
               value: http://pixel-legacy-node
-          volumeMounts: [{ name: data, mountPath: /app/data, readOnly: false }]
+            - name: HERMES_HOME   # no env prefix in Settings: field hermes_home == var HERMES_HOME
+              value: /hermes-home
+          volumeMounts:
+            - { name: data, mountPath: /app/data, readOnly: false }
           resources:
             requests: { cpu: 100m, memory: 192Mi }
             limits:   { cpu: 500m, memory: 512Mi }
@@ -112,6 +122,8 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim: { claimName: pixel-data }
+        - name: hermes-home   # same hostPath as pixel-office-js; python reads it as uid 1001
+          hostPath: { path: /data/hermes-home, type: Directory }
 ---
 apiVersion: v1
 kind: Service

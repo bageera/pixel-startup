@@ -4,8 +4,9 @@ WORKDIR /app
 RUN pip install --no-cache-dir "uv>=0.5"
 COPY pyproject.toml uv.lock* ./
 COPY src/pixel_startup ./src/pixel_startup
+COPY index.html dashboard.html ./
+COPY assets ./assets
 RUN uv sync --frozen --no-dev --compile-bytecode 2>/dev/null || uv sync --no-dev
-
 FROM python:3.12-slim
 WORKDIR /app
 RUN useradd -r -u 1001 pixel && mkdir -p /app/data && chown -R pixel:pixel /app
