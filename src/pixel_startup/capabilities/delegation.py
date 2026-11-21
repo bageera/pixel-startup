@@ -129,7 +129,6 @@ def make_delegation_adapter(db: Database, registry, audit: AuditStore):
         target = store.get(target_id)
         if target is None or target["lifecycle"] not in ACTIVE_LIFECYCLE:
             raise DelegationFailure("target employee not actionable")
-        harness = target["harness"] or payload.get("harness") or "none"
 
         task_id = _make_task_id(correlation_id, target_id, objective)
         tasks = TaskStore(db)
