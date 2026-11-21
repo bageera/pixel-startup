@@ -173,6 +173,8 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 **P5 regression:** 136 pytest (new presence-honesty pin) · ruff clean+formatted · pyright 0 errors · npm 56 · four environments verified live earlier in G20-B (catalog + assets 200s). All offline/unavailable states truthful (negative + positive controls above).
 **Deploy/push:** WITHHELD per mandate. To apply on the deployment host: build/push the updated python image from this commit, mount/sync `~/.hermes` → hostPath `/data/hermes-home`, `kubectl apply -f deploy/pixel-stack.yaml`. Remaining blockers: B1 (OpenClaw gateway), browser Network-tab capture for the exact task-creation 4xx if it persists, `pip-audit`. Nothing to roll back: local commits only (`afe2040`, `5262bfa`).
 
+**Image push (owner-authorized 2026-11-21):** `docker tag pixel-python-ga2:latest ghcr.io/bageera/pixel-startup-python:latest && docker push` → **latest: digest: sha256:f67d5f332fc34b75519ee86a7da47887e0fa71b7b6279e25a915749c1e252c5d size: 856** (240 MB, 2 layers fresh: 7aefc0f7d119, b9973a93dad3). Image content = commit `5262bfa` tree (G20-B routes + frontend in image). Git commit push NOT performed — `main` stays ahead-of-origin until authorized. Deploy-host steps remain: sync hermes home → `/data/hermes-home`, `kubectl apply -f deploy/pixel-stack.yaml`.
+
 ### G21 — End-to-end MVP acceptance (2026-11-21)
 
 **Final quality run (exact commands, this checkout):**
