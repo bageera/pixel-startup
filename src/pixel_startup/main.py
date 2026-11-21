@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from pixel_startup.api import capabilities, health, office_state
+from pixel_startup.api import capabilities, gateway, health, office_state
 from pixel_startup.api import environment as environment_api
 from pixel_startup.config import Settings, load_settings
 from pixel_startup.log import logger, setup_logging
@@ -439,6 +439,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(environment_api.router)
     app.include_router(capabilities.router)
     app.include_router(office_state.router)
+    # G20 cut-over: gateway MUST be registered last — it is the catch-all that
+    # routes not-yet-migrated surfaces to the deprecated node (or refuses).
+    app.include_router(gateway.router)
 
     @app.exception_handler(HTTPException)
     async def _http_exc(_: Request, exc: HTTPException) -> JSONResponse:

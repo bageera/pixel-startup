@@ -50,8 +50,10 @@ def test_error_envelope_on_unknown_route() -> None:
             transport=httpx.ASGITransport(app=_app()), base_url="http://t"
         ) as c:
             r = await c.get("/api/v1/definitely-not-here")
-            assert r.status_code == 404
-            assert r.json() == {"error": {"code": 404, "message": "not found"}}
+            # G20: without a configured node upstream, deprecated routes answer
+            # the honest 501 deprecation envelope instead of a generic 404.
+            assert r.status_code == 501
+            assert r.json()["deprecated"] == "node"
 
     anyio.run(drive)
 

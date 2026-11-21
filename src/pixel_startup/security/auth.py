@@ -4,8 +4,10 @@ Fail-closed semantics:
 - Bearer accepted only when it byte-matches PIXEL_API_TOKEN (unset => always 401).
 - Session cookies accepted only when verifiable against PIXEL_SESSION_SECRET
   (unset => always 401), including an expiry check.
-The candidate cookie format (`v1.<expiry_ms>.<hmac-sha256-hex>`) is NOT yet
-wire-compatible with the JS backend's cookie; parity is a G20 concern.
+- TWO cookie formats are accepted at parity (G20 cutover):
+  * the legacy Node format `<issued_ms>.<hex>` with HMAC over "pixel-office-session:ts"
+    (issued by the deprecated node /api/auth/login), and
+  * the Python candidate `v1.<expiry_ms>.<hex>`.
 """
 
 import hashlib
@@ -19,10 +21,12 @@ from pixel_startup.config import Settings
 
 COOKIE_NAME = "pixel_session"
 _AUTH_REQUIRED = HTTPException(status_code=401, detail="authentication required")
+_JS_MESSAGE_PREFIX = "pixel-office-session:"  # keep byte-identical with server.js
+_JS_TTL_MS = 12 * 3600 * 1000
 
 
 def create_session_cookie(secret: str, ttl_seconds: int = 43200, now_ms: int | None = None) -> str:
-    """Issue a signed, self-expiring session cookie value."""
+    """Issue a signed, self-expiring session cookie value (Python format)."""
     expiry = (now_ms if now_ms is not None else int(time.time() * 1000)) + ttl_seconds * 1000
     message = f"v1.{expiry}".encode()
     sig = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
@@ -30,6 +34,17 @@ def create_session_cookie(secret: str, ttl_seconds: int = 43200, now_ms: int | N
 
 
 def verify_session_cookie(secret: str, cookie: str, now_ms: int | None = None) -> bool:
+    if cookie.count(".") == 1:  # legacy Node format: <issued_ms>.<hex64>
+        issued_raw, sig = cookie.split(".", 1)
+        if not issued_raw.isdigit() or len(sig) != 64:
+            return False
+        expected = hmac.new(
+            secret.encode(), f"{_JS_MESSAGE_PREFIX}{issued_raw}".encode(), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            return False
+        now = now_ms if now_ms is not None else int(time.time() * 1000)
+        return now - int(issued_raw) <= _JS_TTL_MS
     parts = cookie.split(".")
     if len(parts) != 3 or parts[0] != "v1":
         return False

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     port: int = 19000
     # Operational
     pixel_data_dir: str = "./data"
+    # G20 cut-over: internal upstream of the DEPRECATED node backend (strangler).
+    # Empty => not-yet-migrated routes answer 501 with the honest deprecation body;
+    # set (e.g. http://pixel-legacynode:19000) => they proxy with header passthrough.
+    node_upstream: str | None = None
+    node_upstream_timeout_seconds: float = 10.0
     # Secrets (no defaults — fail closed when unset)
     pixel_session_secret: str | None = None
     pixel_api_token: str | None = None

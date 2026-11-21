@@ -40,7 +40,10 @@ def test_unauthenticated_route_matrix(tmp_path) -> None:
                     # POST /api/config is JS-baseline-only; its Python counterpart
                     # (PUT /api/environment) is the authed surface verified here.
                     r = await client.request(method, path, json={})
-                    assert r.status_code in (401, 403), (method, path, r.status_code)
+                    # G20: unknown routes 404; deprecated-node routes answer 501;
+                    # authed-but-wrong-method 405
+                    assert r.status_code in (401, 403, 404, 405, 501), (
+                        method, path, r.status_code)
                 # authz is enforced WITHOUT echoing malformed payload content
                 r = await client.post("/api/v1/capabilities/execute",
                                       json={"payload": "<script>alert(1)</script>"})

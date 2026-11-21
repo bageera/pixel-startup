@@ -49,12 +49,14 @@ spec:
         - name: data
           persistentVolumeClaim: { claimName: pixel-data }
 ---
+# G20 CUT-OVER: the Python backend is the public office surface; node is
+# deprecated (strangler upstream on the internal-only service below).
 apiVersion: v1
 kind: Service
 metadata:
-  name: pixel-office-js
+  name: pixel-office
 spec:
-  selector: { app: pixel-office-js }
+  selector: { app: pixel-backend-python }
   ports: [{ port: 80, targetPort: 19000 }]
 ---
 apiVersion: v1
@@ -89,6 +91,9 @@ spec:
           ports: [{ containerPort: 19000 }]
           envFrom:
             - secretRef: { name: pixel-secrets }
+          env:
+            - name: NODE_UPSTREAM   # deprecated node, reached through the internal service
+              value: http://pixel-legacy-node
           volumeMounts: [{ name: data, mountPath: /app/data, readOnly: false }]
           resources:
             requests: { cpu: 100m, memory: 192Mi }
@@ -111,7 +116,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: pixel-backend-python
+  name: pixel-legacy-node   # deprecated upstream — internal only, no public exposure
+  labels: { deprecated: node }
 spec:
-  selector: { app: pixel-backend-python }
+  selector: { app: pixel-office-js }
   ports: [{ port: 80, targetPort: 19000 }]

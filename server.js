@@ -118,6 +118,9 @@ const persistMapData = (updates = {}) => {
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 19000;
+console.warn('[DEPRECATED] node backend is in strangler mode as of the G20 cutover: ' +
+  'python (pixel_startup) fronts this service; migrate routes to python and retire ' +
+  'this process once the /api surface is fully native.');
 
 // === G2 security: explicit public-file allowlist (never the repo root) ===
 const PUBLIC_FILES = {
