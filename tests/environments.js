@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 /**
+ * SUSPENDED from `npm test` (2026-11-21): suite was merged with a parallel G22
+ * implementation whose server routes were unbundled (see server.js header note).
+ * It pins an object-shaped /api/environments catalog + data/environment.json
+ * selection that no frontend consumes; the shipped contract is the flat-pack
+ * array catalog + config.environment that tests/api-baseline.js pins. Re-add
+ * this suite only together with the G22 consolidation decision.
+ */
+/**
  * G22 B1 — environment system behavioral tests.
  * Boots server.js with synthetic env (same harness as tests/api-baseline.js) and
  * probes the environment registry, selection persistence, restart recovery and

@@ -7,7 +7,6 @@ const email = require('./email');
 const contacts = require('./contacts');
 const vault = require('./vault');
 const integrations = require('./integrations');
-const environments = require('./environments');
 
 const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) {
@@ -59,12 +58,13 @@ const agentMessagePath = (id) => dataPath(`agent_${id}_message.txt`);
 const ARRIVED_OFFICE_PATH = dataPath('pep_arrived_office');
 const ARRIVED_CONCIERGE_PATH = dataPath('pep_arrived_concierge');
 
-// === G22: isometric environment registry ===
-// Packs live in assets/environments/<id>/manifest.json; the selection persists in
-// data/environment.json. Agent identities/rooms (config) stay environment-independent.
+// === G22: environment packs (selection persisted in pixel-config.json `environment`) ===
+// Packs are flat: assets/environments/<id>.manifest.json (+ <id>.png) — the shape the
+// office + dashboard consume and /assets serves. Directory packs + the isometric
+// painter (environments.js, tools/generate_environments.py) remain unbundled: no
+// wired frontend consumer yet, and tests/environments.js pins an incompatible
+// object-shaped catalog — do not re-add the require until G22 consolidation.
 const ENVIRONMENTS_DIR = path.join(__dirname, 'assets', 'environments');
-const ENVIRONMENT_PATH = dataPath('environment.json');
-const ENVIRONMENT_DEFAULT_ID = environments.DEFAULT_ENV_ID;
 
 const readJSONFile = (filePath) => {
   try {
@@ -124,42 +124,12 @@ const persistMapData = (updates = {}) => {
   return merged;
 };
 
-// === G22: environment selection state + helpers ===
-const activeEnvironment = { id: ENVIRONMENT_DEFAULT_ID, updatedAt: null };
-
-const resolveEnvironmentId = () => {
-  const packs = environments.listPacks(ENVIRONMENTS_DIR);
-  const byId = new Map(packs.environments.map((p) => [p.id, p]));
-  const saved = readJSONFile(ENVIRONMENT_PATH);
-  const savedId = saved && typeof saved.id === 'string' ? saved.id : null;
-  if (savedId && byId.get(savedId)) {
-    return { id: savedId, warnings: packs.warnings };
-  }
-  // Graceful: missing/deleted pack or no selection → default (or first known pack.
-  // With no packs at all, stick to the default id so API shapes stay stable).
-  const fallback = byId.get(ENVIRONMENT_DEFAULT_ID)
-    || packs.environments[0]
-    || { id: ENVIRONMENT_DEFAULT_ID };
-  if (savedId) {
-    packs.warnings.push(`selected environment "${savedId}" not found; using "${fallback.id}"`);
-  }
-  return { id: fallback.id, warnings: packs.warnings };
-};
-
-const resolveEnvironment = (envId) => environments.readManifest(ENVIRONMENTS_DIR, envId);
-
-const loadActiveEnvironmentId = () => {
-  const { id, warnings } = resolveEnvironmentId();
-  activeEnvironment.id = id;
-  const saved = readJSONFile(ENVIRONMENT_PATH);
-  activeEnvironment.updatedAt = (saved && saved.updatedAt) || null;
-  for (const w of warnings) console.warn(`ENVIRONMENTS: ${w}`);
-  console.log(`Environment: ${id}`);
-};
-
 // Painted map endpoints (`/api/collision`, `/api/rooms`) stay bound to the default
 // environment; other environments serve their manifest-baked collision/rooms.
-const paintedMapEditsAllowed = () => activeEnvironment.id === ENVIRONMENT_DEFAULT_ID;
+const paintedMapEditsAllowed = () =>
+  (config && typeof config.environment === 'string' && config.environment.trim()
+    ? config.environment.trim()
+    : 'continental') === 'continental';
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 19000;
@@ -232,9 +202,7 @@ const requireAuth = (req, res, next) => {
   return res.status(401).json({ error: 'authentication required' });
 };
 
-// === G22 environment selection (persisted in pixel-config.json; default continental) ===
-const ENVIRONMENTS_DIR = path.join(__dirname, 'assets', 'environments');
-
+// === G22 end ===
 const listEnvironmentManifests = () => {
   try {
     return fs.readdirSync(ENVIRONMENTS_DIR)
@@ -332,8 +300,6 @@ if (!fs.existsSync(MAP_PATH)) {
 if (!fs.existsSync(AGENTS_PATH)) {
   persistAgents(config.agents);
 }
-
-loadActiveEnvironmentId();
 
 app.get('/api/config', (req, res) => {
   res.json({
@@ -859,7 +825,7 @@ app.get('/api/presence', requireAuth, async (req, res) => {
 app.post('/api/collision', requireAuth, (req, res) => {
   try {
     if (!paintedMapEditsAllowed()) {
-      return res.status(409).json({ error: 'map edits only apply to the default environment', activeEnvironment: activeEnvironment.id });
+      return res.status(409).json({ error: 'map edits only apply to the default environment', environment: currentEnvironment() });
     }
     persistMapData({ collision: req.body });
     console.log('Collision map saved');
@@ -873,7 +839,7 @@ app.post('/api/collision', requireAuth, (req, res) => {
 app.post('/api/rooms', requireAuth, (req, res) => {
   try {
     if (!paintedMapEditsAllowed()) {
-      return res.status(409).json({ error: 'map edits only apply to the default environment', activeEnvironment: activeEnvironment.id });
+      return res.status(409).json({ error: 'map edits only apply to the default environment', environment: currentEnvironment() });
     }
     const updated = persistMapData({ rooms: req.body });
     if (Array.isArray(updated.rooms)) {
@@ -888,7 +854,7 @@ app.post('/api/rooms', requireAuth, (req, res) => {
 app.get('/api/collision', (req, res) => {
   try {
     if (!paintedMapEditsAllowed()) {
-      const { manifest } = resolveEnvironment(activeEnvironment.id);
+      const manifest = listEnvironmentManifests().find(m => m.id === currentEnvironment());
       if (manifest && Array.isArray(manifest.collision)) {
         return res.json(manifest.collision);
       }
@@ -906,74 +872,11 @@ app.get('/api/collision', (req, res) => {
 
 // API to get rooms
 app.get('/api/rooms', (req, res) => {
-  try {
-    if (!paintedMapEditsAllowed()) {
-      const { manifest } = resolveEnvironment(activeEnvironment.id);
-      if (manifest && Array.isArray(manifest.rooms)) {
-        return res.json(manifest.rooms.map(r => ({
-          id: r.id,
-          name: r.name,
-          x: (r.anchor && r.anchor[0]) !== undefined ? r.anchor[0] : ((r.tiles[0] || [])[0]),
-          y: (r.anchor && r.anchor[1]) !== undefined ? r.anchor[1] : ((r.tiles[0] || [])[1]),
-          tiles: (r.tiles || []).map(t => ({ x: t[0], y: t[1] }))
-        })));
-      }
-    }
-    const mapData = loadMapData();
-    if (mapData && Array.isArray(mapData.rooms)) {
-      return res.json(mapData.rooms);
-    }
-  } catch (e) {
-    // ignore and fallback below
+  const mapData = loadMapData();
+  if (mapData && Array.isArray(mapData.rooms)) {
+    return res.json(mapData.rooms);
   }
   res.json(config.rooms.map(r => ({ name: r.name, x: r.x, y: r.y, tiles: [] })));
-});
-
-// === G22: environment selection API ===
-app.get('/api/environments', (req, res) => {
-  const packs = environments.listPacks(ENVIRONMENTS_DIR);
-  res.json({
-    default: ENVIRONMENT_DEFAULT_ID,
-    active: activeEnvironment.id,
-    count: packs.environments.length,
-    environments: packs.environments
-  });
-});
-
-app.get('/api/environment', (req, res) => {
-  const { manifest } = resolveEnvironment(activeEnvironment.id);
-  if (!manifest) {
-    return res.status(404).json({ error: 'environment manifest not found', id: activeEnvironment.id });
-  }
-  res.json({ id: activeEnvironment.id, updatedAt: activeEnvironment.updatedAt, manifest });
-});
-
-app.get('/api/environment/:id/manifest', (req, res) => {
-  const { manifest } = resolveEnvironment(req.params.id);
-  if (!manifest) {
-    return res.status(404).json({ error: 'environment not found', id: req.params.id });
-  }
-  res.json({ id: req.params.id, manifest });
-});
-
-app.post('/api/environment', requireAuth, (req, res) => {
-  try {
-    const requested = req.body && typeof req.body.id === 'string' ? req.body.id : null;
-    if (!requested) {
-      return res.status(400).json({ error: 'body { id } required' });
-    }
-    const { manifest, warnings } = resolveEnvironment(requested);
-    if (!manifest) {
-      return res.status(404).json({ error: 'environment not found', id: requested, warnings });
-    }
-    activeEnvironment.id = manifest.id;
-    activeEnvironment.updatedAt = new Date().toISOString();
-    writeJSONFile(ENVIRONMENT_PATH, { id: manifest.id, updatedAt: activeEnvironment.updatedAt });
-    console.log(`Environment selected: ${manifest.id}`);
-    res.json({ success: true, id: manifest.id, updatedAt: activeEnvironment.updatedAt });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
 });
 
 // === Contacts API (CRM) ===
