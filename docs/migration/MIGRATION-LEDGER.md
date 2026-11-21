@@ -171,6 +171,8 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 **Tests + results (step 1):** 5 new tests (declared/normalized, messages validation, auth/5xx/malformed/live-factory, unconfigured BLOCKED, env-alias roundtrip); `make python-test` → **141 passed** (was 136), ruff clean+formatted, pyright 0 errors, `uv run pip-audit` → 0 vulnerabilities; `npm test` → 57/0.
 **Limitations:** chat is invoked in-process via the provider contract; no HTTP route surface yet (steps 2-3); no approval-gating change (model invocation mutates no pixel state).
 
+**Image (owner-authorized "commit and push" 2026-11-21):** `ghcr.io/bageera/pixel-startup-python:latest` = **sha256:fe439805b0f658e15f2dde52e7dec98d0020b97226d0559cec586d349145ccfa**, content = commit `7f140f9` (G23 steps 1-2). Smoke on the PULLED tag: /healthz 200 @9 s, / 200, /api/v1/chief/advise 401 unauth (route present + auth-gated). Pulling hosts: `docker pull` + `kubectl apply` unchanged; chat stays honest-503 via LITELLM until the owner adds `LITELLM_API_KEY` to `pixel-secrets`.
+
 ### G20-B-REPAIR — Post-deployment integration gauntlet (2026-11-21, commit `5262bfa`)
 
 **P0 deployed reality (honest scope):** no reachable cluster API from this host (local kubeconfig targets a dead 127.0.0.1:6443 — rancher-desktop); direct pod inspection BLOCKED. Evidence therefore comes from reproducing the EXACT deployed artifacts: the published image `sha256:7fe24e84…` (G20-A, pre-G20-B) run with `NODE_UPSTREAM` to a real node + the local checkout at HEAD. Sanitized traces below are from those live processes.
