@@ -1,4 +1,24 @@
 // Presence integration self-check: run with `npm test`.
+// Hermetic: fabricate a Hermes home with THIS process as the live gateway so the
+// presence asserts don't depend on the host's real ~/.hermes (CI runners have
+// none; the owner's Mac always does — the same gap the first CI run caught in
+// the python provider-state pins).
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pixel-hermes-home-'));
+fs.writeFileSync(
+  path.join(testHome, 'gateway_state.json'),
+  JSON.stringify({
+    gateway_state: 'running',
+    pid: process.pid,
+    active_agents: 2,
+    platforms: { mattermost: { state: 'connected' } }
+  })
+);
+process.env.HERMES_HOME = testHome;
+
 const { getPresence, hermesPresence, openclawPresence } = require('./integrations');
 
 let failed = 0;
