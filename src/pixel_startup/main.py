@@ -34,6 +34,7 @@ from pixel_startup.persistence.store import (
 )
 from pixel_startup.providers.registry import (
     ProviderCategory,
+    ProviderError,
     ProviderRegistration,
     ProviderRegistry,
     ProviderState,
@@ -159,6 +160,7 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
         db, container.registry, container.providers["audit"]
     )
     _register_comms(container, settings)
+    _register_infra(container, settings)
     container.registry.register(
         ProviderRegistration(
             provider_id="pixel_startup_sqlite",
@@ -301,6 +303,43 @@ def _register_comms(container: Container, settings: Settings) -> None:
         container.registry.transition(provider_id, ProviderState.CANDIDATE)
     container.providers["comms_mattermost"] = mattermost
     container.providers["comms_email"] = email
+
+
+def _register_infra(container: Container, settings: Settings) -> None:
+    """G15: read-only operational providers (Odoo/HA/Rundeck/Grafana/GitHub/
+    FreshRSS/LiteLLM/Calendar); write-ops deliberately absent per mandate."""
+    from pixel_startup.integrations import infra
+
+    container.providers["infra"] = {}
+    for provider_cls, url_field in infra.PROVIDERS:
+        token_field = url_field.replace("_url", "_api_key" if url_field == "odoo_url" else "_token")
+        adapter = provider_cls(getattr(settings, url_field), getattr(settings, token_field, None))
+        container.providers["infra"][adapter.provider_id] = adapter
+        try:
+            container.registry.register(
+                ProviderRegistration(
+                    provider_id=adapter.provider_id,
+                    category=ProviderCategory.MONITORING
+                    if adapter.provider_id in ("grafana", "litellm", "calendar")
+                    else ProviderCategory.AUTOMATION
+                    if adapter.provider_id in ("rundeck", "github")
+                    else ProviderCategory.ACTIVITY_REPORTING,
+                    implementation="external",
+                    handler=adapter,
+                    endpoint=getattr(settings, url_field),
+                    capabilities=list(adapter.capabilities),
+                    priority=10,
+                    detail=(
+                        "candidate: contract-tested vs synthetic transport;"
+                        " live rows BLOCKED (no endpoint configured)"
+                        if not adapter.configured
+                        else "candidate: contract-tested; live URL configured"
+                    ),
+                )
+            )
+            container.registry.transition(adapter.provider_id, ProviderState.CANDIDATE)
+        except ProviderError:
+            pass  # already registered in this container (idempotent boot)
 
 
 def _register_hermes(container: Container, settings: Settings) -> None:

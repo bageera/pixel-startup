@@ -21,6 +21,23 @@ class Settings(BaseSettings):
     mattermost_url: str | None = None  # G13: internal comms (live creds BLOCKED)
     mattermost_token: str | None = None
     mattermost_channels: str = ""  # comma-separated allowlist
+    # G15: read-only infra providers (live rows BLOCKED until owner configures)
+    odoo_url: str | None = None
+    odoo_api_key: str | None = None
+    homeassistant_url: str | None = None
+    homeassistant_token: str | None = None
+    rundeck_url: str | None = None
+    rundeck_token: str | None = None
+    grafana_url: str | None = None
+    grafana_token: str | None = None
+    github_url: str = "https://api.github.com"
+    github_token: str | None = None
+    freshrss_url: str | None = None
+    freshrss_token: str | None = None
+    litellm_url: str | None = None
+    litellm_token: str | None = None
+    calendar_url: str | None = None
+    calendar_token: str | None = None
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     port: int = 19000
