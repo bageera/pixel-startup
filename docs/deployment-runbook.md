@@ -7,7 +7,10 @@
 
 ## Kubernetes (deploy/pixel-stack.yaml)
 - Single PVC `pixel-data` (5Gi) shared by both deployments; **exactly one backend may hold it read-write at a time** — cutover sequence below enforces the single-writer window.
-- `pixel-backend-python`: runAsNonRoot 1001, resources req 192Mi/100m → limit 512Mi/500m, liveness+readiness on `/healthz`, preStop drain. SecretRef `pixel-secrets` (DASHBOARD_PASSWORD, PIXEL_SESSION_SECRET, PIXEL_API_TOKEN, optional CHROMA_*/MINIO_*/MATTERMOST_*/GITHUB_TOKEN...). NetworkPolicy restricts ingress to the cluster edge.
+- `pixel-backend-python`: runAsNonRoot 1001, resources req 192Mi/100m → limit 512Mi/500m, liveness+readiness on `/healthz`, preStop drain. SecretRef `pixel-secrets`; BOTH pods inject ALL secret keys via `envFrom`. Required keys: `DASHBOARD_PASSWORD`, `PIXEL_SESSION_SECRET`, `PIXEL_API_TOKEN`, **`LITELLM_API_KEY`** (office chat + briefings run through the LiteLLM call in `server.js` `/api/ai/*`/`/api/briefing/ai`; without it node sends `Bearer ''` and the office chat surfaces the sanitized "Connection error with the AI API (LiteLLM)" — repro: 502 `{"error":"LiteLLM error","status":401}`). Optional keys: `LITELLM_API_URL`/`LITELLM_MODEL` (defaults match `litellm.blacktech.dev` + package default model), `CHROMA_*`, `MINIO_*`, `MATTERMOST_URL`/`MATTERMOST_TOKEN`/`MATTERMOST_CHANNELS` (G13 comms adapter live rows — `Settings` has NO env prefix, so field `mattermost_url` binds to plain `MATTERMOST_URL`), `GITHUB_TOKEN`.
+- In-pod verification after apply/secret change (prints names/counts only — no values):
+  - `kubectl exec deploy/pixel-office-js -- sh -c 'env | grep -c "^LITELLM_API_KEY="'` → `1`
+  - Egress/status check: `kubectl exec deploy/pixel-office-js -- node -e "fetch(process.env.LITELLM_API_URL+'/v1/models',{headers:{Authorization:'Bearer '+process.env.LITELLM_API_KEY}}).then(r=>console.log('litellm status',r.status)).catch(()=>console.log('litellm NET-FAIL'))"` → `status 200` (key/egress OK), `status 401` (key wrong), `NET-FAIL` (egress blocked → add an egress NetworkPolicy allowing DNS + 443 out). NetworkPolicy in this manifest is ingress-only; egress is open by default unless the cluster defaults otherwise.
 - Apply: `kubectl apply -f deploy/pixel-stack.yaml` (JS stack stays authoritative until owner-authorized cutover).
 
 ## Backup / restore (verified conventional method)
