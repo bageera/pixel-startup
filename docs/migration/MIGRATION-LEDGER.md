@@ -159,6 +159,13 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G17 — Security qualification (executed 2026-11-21)
+
+**Evidence:** `tests/test_security_matrix.py` (4: unauth route matrix + no-echo, cookie expiry/tamper, runtime leak-scan of office/state rows, staleness contract) on top of the G10/G14/G22 adversarial suites. **Report: `docs/security-qualification.md`** (19-row dispositions table).
+**Fixed this gate:** XSS-hardened the G16 status chips (all backend interpolations HTML-escaped client-side).
+**Findings:** no unresolved critical/high in enabled capabilities. Two owner items recorded: rotate the historical credential in `075e1f1` (+ optional history purge, needs authorization); Python dep scan (`pip-audit`) NOT RUN — `npm audit` 0 vulnerabilities.
+**Verdict: PASS with dispositions.**
+
 ### G11 — Memory Palace / ChromaDB (executed 2026-11-21)
 
 **Objective:** qualify the remote ChromaDB service as institutional-memory provider.

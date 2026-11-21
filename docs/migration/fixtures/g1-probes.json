@@ -1,6 +1,6 @@
 {
   "boot": {
-    "startupMs": 305,
+    "startupMs": 309,
     "log": [
       "Using initial configuration",
       "Dashboard auth route ready",
