@@ -140,6 +140,20 @@
             <!-- VIEW: CHARACTERS -->
             <div id="viewChars" class="absolute inset-0 p-6 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col">
 
+                <div class="bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-700 mb-8 shrink-0">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-xl font-semibold text-slate-200">Startup &amp; Move-in <span id="dpiVersion" class="text-xs text-slate-500 font-normal"></span></h2>
+                        <button onclick="saveStartup()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-1.5 px-4 rounded-lg transition-colors">Save Startup</button>
+                    </div>
+                    <div id="moveInChecks" class="text-sm text-slate-400 mb-3 flex flex-col gap-1">
+                        <!-- Generado por JS (checklist: chief human, direction, goals) -->
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <input id="startupDirection" class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500" placeholder="Startup direction (e.g. Own the AI-ops office niche)">
+                        <input id="startupGoals" class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500" placeholder="Goals, comma separated (e.g. office chat live, comms wired)">
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 min-h-0 items-start">
                     
                     <div class="bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-700 max-h-full flex flex-col">
@@ -305,13 +319,20 @@
         let activeRoomId = null;          // which room we are painting
         let isMouseDown = false;
 
-        // AUTH
+        // AUTH — dashboard shares the office admin session (pixel_session cookie);
+        // /api/auth/check is server truth: valid session → straight in, else login.
         async function initApp() {
-            if (sessionStorage.getItem('pixelAdminAuth') === 'true') {
-                await showDashboard();
-            } else {
-                document.getElementById('loginScreen').classList.remove('hidden');
+            try {
+                const r = await fetch('/api/auth/check');
+                if (r.ok) {
+                    sessionStorage.setItem('pixelAdminAuth', 'true');
+                    await showDashboard();
+                    return;
+                }
+            } catch (e) {
+                console.error('Session check failed', e); // fall through to login
             }
+            document.getElementById('loginScreen').classList.remove('hidden');
         }
 
         async function checkLogin() {
@@ -371,6 +392,7 @@
             document.getElementById('dashboardScreen').classList.remove('hidden');
             await loadAllData();
             initEnvironmentSelector(); // G22: env catalog + current selection
+            loadMoveIn(); // G24: readiness + startup direction/goals
             // Default select
             setMapBrush('terrain', 1); // Select Wall
             
@@ -383,6 +405,62 @@
         }
 
         // LOAD / SAVE from SERVER
+        // === G24 move-in readiness + startup direction/goals ===
+        async function loadMoveIn() {
+            const box = document.getElementById('moveInChecks');
+            try {
+                const [mvRes, cfgRes] = await Promise.all([
+                    fetch('/api/move-in'),
+                    fetch('/api/config')
+                ]);
+                const mv = mvRes.ok ? await mvRes.json() : null;
+                const cfg = cfgRes.ok ? await cfgRes.json() : null;
+                // version tag (same payload the office HUD uses)
+                fetch('/api/version').then(r => r.ok ? r.json() : null).then(v => {
+                    if (v) document.getElementById('dpiVersion').textContent = '· ' + v.name + ' v' + v.version;
+                }).catch(() => null);
+                if (mv && box) {
+                    const rows = Object.entries(mv.checks).map(([k, c]) =>
+                        `<div style="display:flex;gap:6px;"><span style="color:${c.ok ? '#4ade80' : '#f87171'};">${c.ok ? '✓' : '✗'}</span> ` +
+                        `<span style="color:#9ca3af;">${k}:</span> <span>${mv.ready ? 'ready to move in' : (c.detail || '')}</span></div>`
+                    ).join('');
+                    box.innerHTML = `<div style="font-size:11px;color:${mv.ready ? '#4ade80' : '#fbbf24'};margin-bottom:2px;">${mv.ready ? '✓ STARTUP READY TO MOVE IN' : '· NOT READY TO MOVE IN'}</div>` + rows;
+                }
+                if (cfg) {
+                    const startup = cfg.startup || {};
+                    document.getElementById('startupDirection').value = startup.direction || '';
+                    document.getElementById('startupGoals').value = (startup.goals || []).join(', ');
+                }
+            } catch (e) {
+                if (box) box.innerHTML = '<span style="color:#f87171;">Move-in status unavailable</span>';
+            }
+        }
+
+        async function saveStartup() {
+            const status = document.getElementById('moveInChecks');
+            try {
+                // Carry the full current config so this POST never resets agents/rooms
+                const configRes = await fetch('/api/config');
+                const config = await configRes.json();
+                config.startup = {
+                    direction: document.getElementById('startupDirection').value.trim(),
+                    goals: document.getElementById('startupGoals').value.split(',').map(g => g.trim()).filter(Boolean),
+                };
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                if (res.status === 401) {
+                    status.innerHTML = '<span style="color:#f87171;">Session expired — login again</span>';
+                    return;
+                }
+                await loadMoveIn(); // re-render honest checklist from the server
+            } catch (e) {
+                status.innerHTML = '<span style="color:#f87171;">Failed to save startup fields</span>';
+            }
+        }
+
         // === G22 environment selector ===
         async function initEnvironmentSelector() {
             try {

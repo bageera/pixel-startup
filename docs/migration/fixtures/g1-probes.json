@@ -213,6 +213,162 @@
       }
     },
     {
+      "name": "GET /api/auth/check (unauth)",
+      "method": "GET",
+      "path": "/api/auth/check",
+      "status": 401,
+      "bodyShape": {
+        "error": "string"
+      }
+    },
+    {
+      "name": "GET /api/auth/check (bearer)",
+      "method": "GET",
+      "path": "/api/auth/check",
+      "status": 200,
+      "bodyShape": {
+        "success": "boolean"
+      }
+    },
+    {
+      "name": "GET /api/version",
+      "method": "GET",
+      "path": "/api/version",
+      "status": 200,
+      "bodyShape": {
+        "name": "string",
+        "version": "string"
+      }
+    },
+    {
+      "name": "GET /api/move-in (bearer, fresh config)",
+      "method": "GET",
+      "path": "/api/move-in",
+      "status": 200,
+      "bodyShape": {
+        "checks": {
+          "chief": {
+            "detail": "string",
+            "ok": "boolean"
+          },
+          "direction": {
+            "detail": "string",
+            "ok": "boolean"
+          },
+          "goals": {
+            "detail": "string",
+            "ok": "boolean"
+          }
+        },
+        "ready": "boolean"
+      }
+    },
+    {
+      "name": "POST /api/config (startup fields)",
+      "method": "POST",
+      "path": "/api/config",
+      "status": 200,
+      "bodyShape": {
+        "config": {
+          "agents": {
+            "array": 6,
+            "of": {
+              "active": "boolean",
+              "color": "number",
+              "id": "number",
+              "name": "string",
+              "role": "string",
+              "room": "string",
+              "state": "string",
+              "x": "number",
+              "y": "number"
+            }
+          },
+          "environment": "string",
+          "rooms": {
+            "array": 3,
+            "of": {
+              "name": "string",
+              "x": "number",
+              "y": "number"
+            }
+          },
+          "startup": {
+            "direction": "string",
+            "goals": {
+              "array": 2,
+              "of": "string"
+            }
+          }
+        },
+        "success": "boolean"
+      }
+    },
+    {
+      "name": "POST /api/config (partial save after startup set)",
+      "method": "POST",
+      "path": "/api/config",
+      "status": 200,
+      "bodyShape": {
+        "config": {
+          "agents": {
+            "array": 6,
+            "of": {
+              "active": "boolean",
+              "color": "number",
+              "id": "number",
+              "name": "string",
+              "role": "string",
+              "room": "string",
+              "state": "string",
+              "x": "number",
+              "y": "number"
+            }
+          },
+          "environment": "string",
+          "rooms": {
+            "array": 3,
+            "of": {
+              "name": "string",
+              "x": "number",
+              "y": "number"
+            }
+          },
+          "startup": {
+            "direction": "string",
+            "goals": {
+              "array": 2,
+              "of": "string"
+            }
+          }
+        },
+        "success": "boolean"
+      }
+    },
+    {
+      "name": "GET /api/move-in (bearer, chief+direction+goals)",
+      "method": "GET",
+      "path": "/api/move-in",
+      "status": 200,
+      "bodyShape": {
+        "checks": {
+          "chief": {
+            "detail": "string",
+            "ok": "boolean"
+          },
+          "direction": {
+            "detail": "string",
+            "ok": "boolean"
+          },
+          "goals": {
+            "detail": "string",
+            "ok": "boolean"
+          }
+        },
+        "ready": "boolean"
+      }
+    },
+    {
       "name": "POST /api/config (unauthenticated)",
       "method": "POST",
       "path": "/api/config",
@@ -229,13 +385,34 @@
       "bodyShape": {
         "config": {
           "agents": {
-            "array": 0,
-            "of": null
+            "array": 6,
+            "of": {
+              "active": "boolean",
+              "color": "number",
+              "id": "number",
+              "name": "string",
+              "role": "string",
+              "room": "string",
+              "state": "string",
+              "x": "number",
+              "y": "number"
+            }
           },
           "environment": "string",
           "rooms": {
-            "array": 0,
-            "of": null
+            "array": 3,
+            "of": {
+              "name": "string",
+              "x": "number",
+              "y": "number"
+            }
+          },
+          "startup": {
+            "direction": "string",
+            "goals": {
+              "array": 2,
+              "of": "string"
+            }
           }
         },
         "success": "boolean"
@@ -281,7 +458,7 @@
           },
           "runtime": "string",
           "sessions": {
-            "array": 2,
+            "array": 1,
             "of": {
               "pid": "number",
               "session_id": "string",
@@ -315,8 +492,14 @@
       "status": 200,
       "bodyShape": {
         "agents": {
-          "array": 0,
-          "of": null
+          "array": 6,
+          "of": {
+            "id": "number",
+            "name": "string",
+            "role": "string",
+            "room": "string",
+            "state": "string"
+          }
         },
         "ai": {
           "available": "boolean",

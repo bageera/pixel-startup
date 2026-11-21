@@ -7,6 +7,7 @@ const email = require('./email');
 const contacts = require('./contacts');
 const vault = require('./vault');
 const integrations = require('./integrations');
+const pkg = require('./package.json');
 
 const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) {
@@ -433,16 +434,66 @@ app.post('/api/config', requireAuth, (req, res) => {
   if (!Array.isArray(config.rooms)) {
     config.rooms = defaultRooms;
   }
+  // Roster/room wipe guard (same invariant as the boot migration): an empty
+  // array payload is treated as "not provided" — never fires the owner. The
+  // chief human (Ghostface, Owner) must survive any partial save.
+  if (!config.agents.length) {
+    config.agents = (previous.agents && previous.agents.length) ? previous.agents : defaultAgents;
+  }
+  if (!config.agents.some(a => a.name === 'Ghostface')) {
+    config.agents = config.agents.concat(JSON.parse(JSON.stringify(defaultAgents.find(a => a.name === 'Ghostface'))));
+  }
+  if (!config.rooms.length) {
+    config.rooms = (previous.rooms && previous.rooms.length) ? previous.rooms : defaultRooms;
+  }
   // G22: environment survives partial saves (dashboard edits never erase the selection)
   if (typeof config.environment !== 'string' || !config.environment.trim()) {
     config.environment = (previous && previous.environment) || DEFAULT_ENVIRONMENT;
   }
+  // G24: startup move-in fields (direction + goals) survive partial saves too
+  const prevStartup = (previous && previous.startup && typeof previous.startup === 'object') ? previous.startup : {};
+  const nextStartup = (config.startup && typeof config.startup === 'object') ? config.startup : {};
+  config.startup = {
+    direction: typeof nextStartup.direction === 'string' ? nextStartup.direction : (prevStartup.direction || ''),
+    goals: Array.isArray(nextStartup.goals) ? nextStartup.goals : (prevStartup.goals || []),
+  };
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
   persistAgents(config.agents);
   persistMapData({ rooms: config.rooms });
   console.log('Configuration saved');
   res.json({ success: true, config });
 });
+
+// G24: move-in readiness — is the startup ready to be moved into? Honest by
+// construction: the chief human (Ghostface, Owner) must be present AND on duty,
+// startup direction must be set, and at least one goal must exist.
+app.get('/api/move-in', requireAuth, (req, res) => {
+  const chief = (config.agents || []).find(a => a.name === 'Ghostface');
+  const startup = config.startup || {};
+  const chiefOk = !!chief && chief.active !== false;
+  const directionOk = typeof startup.direction === 'string' && startup.direction.trim().length > 0;
+  const goals = Array.isArray(startup.goals) ? startup.goals.filter(g => g && String(g).trim()) : [];
+  res.json({
+    ready: chiefOk && directionOk && goals.length > 0,
+    checks: {
+      chief: {
+        ok: chiefOk,
+        detail: chief
+          ? `Ghostface (${chief.role}) ${chief.active !== false ? 'present, on duty' : 'off duty'}`
+          : 'Ghostface (Owner) missing from roster',
+      },
+      direction: { ok: directionOk, detail: directionOk ? startup.direction : 'startup direction not set' },
+      goals: { ok: goals.length > 0, detail: `${goals.length} goal(s) on the board` },
+    },
+  });
+});
+
+// Session probe so dashboard.html auto-unlocks from the SAME admin session the
+// office owner login creates (no second password flow, no stale local flag).
+app.get('/api/auth/check', requireAuth, (req, res) => res.json({ success: true }));
+
+// Public version tag for the office HUD.
+app.get('/api/version', (req, res) => res.json({ name: pkg.name, version: pkg.version }));
 
 app.post('/api/agent/:id/move', requireAuth, (req, res) => {
   const id = parseInt(req.params.id);

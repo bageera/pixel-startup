@@ -155,6 +155,7 @@
             <div id="officeStatusChips" style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:11px;"></div>
             <div id="langToggle" style="margin-top:6px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="setLang(LANG==='en'?'es':'en')" title="Language / Idioma">🌐 <span id="langLabel">EN</span></div>
             <div id="ownerLoginBtn" style="margin-top:2px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="ownerLogin()" title="Owner login (AI Director + briefings)">🔒 <span data-i18n="ownerLogin">Owner login</span></div>
+            <div id="hudVersion" style="margin-top:2px;font-size:10px;color:#6b7280;"></div>
         </div>
     </div>
 
@@ -2373,6 +2374,11 @@ Write NOTHING MORE than raw JSON, without code block markdown.`;
 
         // Apply saved/browser language to all data-i18n elements once the DOM is parsed
         applyI18n();
+
+        // G24: platform version on the HUD (public /api/version; silent if unreachable)
+        fetch('/api/version').then(r => r.ok ? r.json() : null).then(v => {
+            if (v && v.version) document.getElementById('hudVersion').textContent = v.name + ' v' + v.version;
+        }).catch(() => null);
 
         // === Contacts Panel Logic ===
         let contactSearchTimer = null;

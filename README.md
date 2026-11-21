@@ -27,6 +27,7 @@ A pixel office operated by a **Python backend** (FastAPI: office state, delegati
 - **Live pixel office** with retro sprites, speech bubbles, and five swappable original environments (Art Deco HQ, Mechanic Shop, Pirate Ship, Lost Boys Treehouse, **Silicon Garage**).
 - **Python operational backend** (`src/pixel_startup/`): office state snapshots, capability-guarded automation, delegation with owner approval, audit log, and SQLite persistence.
 - **Chief of Staff**: `GET /api/v1/chief/advise` (office + public-repo context through your LiteLLM provider), delegated tasks with an LLM plan draft, owner-only review, and independent verify-before-done (`verified` status; never a re-dispatch).
+- **Move-in readiness** (`GET /api/move-in`): chief human present (Ghostface), startup direction set, goals on the board — checklist + editing live on the dashboard's "Startup & Move-in" card.
 - **Honest integrations**: Hermes + OpenClaw presence, Mattermost/email comms, ChromaDB memory, MinIO storage — offline until configured, never fabricated.
 - **Password-protected dashboard** (`dashboard.html`) to edit agents, rooms and collision maps without touching code.
 - **CI**: every push to `main` runs the full gate (pytest/ruff/pyright/pip-audit + node tests) and publishes `ghcr.io/bageera/pixel-startup-backend` (`latest` + semver tags).

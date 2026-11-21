@@ -140,6 +140,22 @@ const stopServer = () => new Promise((resolve) => {
   check('auth/login wrong → 401', r.status === 401);
   const login = await probe('POST /api/auth/login correct', 'POST', '/api/auth/login', { password: 'pixel-office-g1-synthetic' });
   check('auth/login correct → 200 success + HttpOnly session cookie', login.status === 200 && JSON.parse(login.body).success === true && /pixel_session=/.test((login.headers['set-cookie'] || [])[0] || ''));
+  // G24: dashboard session tie-in + version HUD + move-in readiness
+  r = await probe('GET /api/auth/check (unauth)', 'GET', '/api/auth/check');
+  check('GET /api/auth/check unauth → 401', r.status === 401);
+  r = await probe('GET /api/auth/check (bearer)', 'GET', '/api/auth/check', null, { Authorization: `Bearer ${TOKEN}` });
+  check('GET /api/auth/check → 200 (dashboard auto-unlock uses admin session)', r.status === 200 && JSON.parse(r.body).success === true);
+  r = await probe('GET /api/version', 'GET', '/api/version');
+  check('GET /api/version → public version payload', r.status === 200 && /^\d/.test(JSON.parse(r.body).version) && JSON.parse(r.body).name === 'pixel-startup');
+  r = await probe('GET /api/move-in (bearer, fresh config)', 'GET', '/api/move-in', null, { Authorization: `Bearer ${TOKEN}` });
+  check('GET /api/move-in → honestly not ready (chief present, no direction/goals)', r.status === 200 && JSON.parse(r.body).ready === false && JSON.parse(r.body).checks.chief.ok === true);
+  r = await probe('POST /api/config (startup fields)', 'POST', '/api/config', { agents: [], rooms: [], startup: { direction: 'Ship the office MVP', goals: ['office chat live', 'comms wired'] } }, { Authorization: `Bearer ${TOKEN}` });
+  check('POST /api/config with startup fields → 200 and persisted', r.status === 200 && JSON.parse(r.body).config.startup.direction === 'Ship the office MVP');
+  r = await probe('POST /api/config (partial save after startup set)', 'POST', '/api/config', { agents: [], rooms: [] }, { Authorization: `Bearer ${TOKEN}` });
+  check('POST /api/config partial save never erases startup fields', r.status === 200 && JSON.parse(r.body).config.startup.direction === 'Ship the office MVP');
+  r = await probe('GET /api/move-in (bearer, chief+direction+goals)', 'GET', '/api/move-in', null, { Authorization: `Bearer ${TOKEN}` });
+  const mv = JSON.parse(r.body);
+  check('GET /api/move-in → ready to move in', r.status === 200 && mv.ready === true && mv.checks.direction.ok === true && mv.checks.goals.ok === true && /Ghostface/.test(mv.checks.chief.detail));
   r = await probe('POST /api/config (unauthenticated)', 'POST', '/api/config', { agents: [], rooms: [] });
   check('POST /api/config unauthenticated → 401 (G2 remediation of S-05)', r.status === 401);
   r = await probe('POST /api/config (bearer token)', 'POST', '/api/config', { agents: [], rooms: [] }, { Authorization: `Bearer ${TOKEN}` });
