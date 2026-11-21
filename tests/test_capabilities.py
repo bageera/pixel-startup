@@ -530,8 +530,9 @@ def test_provider_records_sync_and_restart_recovery(tmp_path) -> None:
                 "calendar": "candidate",
             }
             assert (
-                db.conn.execute("SELECT COUNT(*) AS n FROM employees").fetchone()["n"] == 1
-            )  # seeded roster aligned at boot
+                db.conn.execute("SELECT COUNT(*) AS n FROM employees").fetchone()["n"] == 2
+            )  # seeded roster aligned at boot (+ Ghostface ensured by the node-parity
+            # boot migration, byte-parity with server.js lines 239-284)
         # restart: fresh backend on the same data dir -> provider rows persist
         fresh = create_app(
             Settings(

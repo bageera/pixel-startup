@@ -16,9 +16,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from pixel_startup.api import capabilities, gateway, health, office_state
+from pixel_startup.api import capabilities, gateway, health, office_compat, office_state
 from pixel_startup.api import environment as environment_api
 from pixel_startup.config import Settings, load_settings
 from pixel_startup.log import logger, setup_logging
@@ -435,10 +436,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings if settings is not None else load_settings()
     app.state.container = Container()
     app.state.ready = False
+    # G20-B: node-parity office state (config/map/commands from the shared data dir)
+    app.state.office = office_compat.OfficeState(app.state.settings)
+    app.include_router(office_compat.router)
     app.include_router(health.router)
     app.include_router(environment_api.router)
     app.include_router(capabilities.router)
     app.include_router(office_state.router)
+    # G20-B asset serving: node's PUBLIC_FILES allowlist semantics
+    # (root index.html + dashboard.html; /assets/* static; /favicon.ico 404).
+    repo_root = Path(__file__).resolve().parents[2]
+
+    @app.get("/", include_in_schema=False)
+    async def _index() -> FileResponse:
+        index = repo_root / "index.html"
+        if not index.exists():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(index)
+
+    @app.get("/dashboard.html", include_in_schema=False)
+    async def _dashboard() -> FileResponse:
+        page = repo_root / "dashboard.html"
+        if not page.exists():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(page)
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def _favicon() -> JSONResponse:  # node PUBLIC_FILES maps it to null -> 404
+        return JSONResponse({"error": {"code": 404, "message": "not found"}}, status_code=404)
+
+    assets_dir = repo_root / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     # G20 cut-over: gateway MUST be registered last — it is the catch-all that
     # routes not-yet-migrated surfaces to the deprecated node (or refuses).
     app.include_router(gateway.router)

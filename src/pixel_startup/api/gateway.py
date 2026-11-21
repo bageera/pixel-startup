@@ -47,9 +47,12 @@ async def _proxy(request: Request, path: str) -> Response:
     try:
         async with _make_client(timeout) as client:
             upstream = await client.request(
-                request.method, url, headers=headers,
+                request.method,
+                url,
+                headers=headers,
                 content=await request.body()
-                if request.method in ("POST", "PUT", "PATCH") else None,
+                if request.method in ("POST", "PUT", "PATCH")
+                else None,
             )
     except httpx.HTTPError:
         return JSONResponse(
@@ -57,13 +60,13 @@ async def _proxy(request: Request, path: str) -> Response:
             status_code=502,
         )
     passthrough = {
-        k: v
-        for k, v in upstream.headers.items()
-        if k.lower() in ("set-cookie", "www-authenticate")
+        k: v for k, v in upstream.headers.items() if k.lower() in ("set-cookie", "www-authenticate")
     }
     return Response(
-        content=upstream.content, status_code=upstream.status_code,
-        media_type=upstream.headers.get("content-type"), headers=passthrough,
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type"),
+        headers=passthrough,
     )
 
 
