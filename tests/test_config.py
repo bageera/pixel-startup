@@ -24,6 +24,19 @@ def test_env_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.is_session_secret_set
 
 
+def test_litellm_env_aliases_honor_node_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LITELLM_API_URL", "https://litellm.example")
+    monkeypatch.setenv("LITELLM_API_KEY", "tok-xyz")
+    monkeypatch.setenv("LITELLM_MODEL", "glm-x")
+    s = load_settings()
+    assert s.litellm_url == "https://litellm.example"
+    assert s.litellm_token == "tok-xyz"
+    assert s.litellm_model == "glm-x"
+    # plain LITELLM_* names also accepted
+    monkeypatch.setenv("LITELLM_URL", "https://litellm2.example")
+    assert load_settings().litellm_url == "https://litellm2.example"
+
+
 def test_load_helper_is_the_documented_entrypoint() -> None:
     module = importlib.import_module("pixel_startup.main")
     assert module is not None

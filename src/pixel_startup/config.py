@@ -7,6 +7,7 @@ logging and diagnostics can report capability without touching the value.
 
 import os
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,11 +35,18 @@ class Settings(BaseSettings):
     github_token: str | None = None
     freshrss_url: str | None = None
     freshrss_token: str | None = None
-    litellm_url: str | None = None
-    litellm_token: str | None = None
+    # Aliases honor the node deployment's env names (LITELLM_API_URL/LITELLM_API_KEY)
+    # so ONE secret feeds both backends; plain LITELLM_* also accepted.
+    litellm_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("LITELLM_URL", "LITELLM_API_URL")
+    )
+    litellm_token: str | None = Field(
+        default=None, validation_alias=AliasChoices("LITELLM_TOKEN", "LITELLM_API_KEY")
+    )
+    litellm_model: str | None = Field(default=None, validation_alias=AliasChoices("LITELLM_MODEL"))
     calendar_url: str | None = None
     calendar_token: str | None = None
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(env_file=None, extra="ignore", populate_by_name=True)
 
     port: int = 19000
     # Operational

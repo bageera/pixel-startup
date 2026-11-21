@@ -5,11 +5,13 @@ import httpx
 import pytest
 
 from pixel_startup.config import Settings
+from pixel_startup.integrations import infra
 from pixel_startup.integrations.infra import (
     FreshRSSProvider,
     GrafanaProvider,
     InfraFailure,
     InfraUnavailable,
+    LiteLLMProvider,
     OdooProvider,
 )
 from pixel_startup.main import create_app
@@ -95,3 +97,83 @@ async def httpx_get_state(app):
         transport=httpx.ASGITransport(app=app), base_url="http://t"
     ) as client:
         return await client.get("/api/v1/office/state")
+
+
+# --- G23: LiteLLM chat.completions (office chat + Chief of Staff rails) ----------
+
+
+def test_chat_completions_declared_and_normalized() -> None:
+    calls = []
+
+    def ok(method, path, body):
+        calls.append((method, path, body["model"]))
+        return (
+            200,
+            {"choices": [{"message": {"role": "assistant", "content": "ok"}}], "model": "glm-test"},
+        )
+
+    llm = LiteLLMProvider("http://llm.test", "tok", client=ok, model="glm-fallback")
+    out = llm.invoke(
+        "chat.completions",
+        {"model": "glm-test", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert out == {"content": "ok", "model": "glm-test"}  # content only; token never echoed
+    assert calls == [("POST", "/v1/chat/completions", "glm-test")]
+    # explicit model wins over the settings-provided default
+    llm_fallback = LiteLLMProvider(
+        "http://llm.test",
+        "tok",
+        client=lambda m, p, b: (200, {"choices": [{"message": {"content": "x"}}]}),
+        model="glm-fallback",
+    )
+    out2 = llm_fallback.invoke("chat.completions", {"messages": [{"role": "user", "content": "s"}]})
+    assert out2["model"] == "glm-fallback"
+    # undeclared ops still refused
+    with pytest.raises(InfraFailure, match="unsupported"):
+        llm.invoke("chat.finetune", {})
+
+
+def test_chat_requires_messages() -> None:
+    llm = LiteLLMProvider("http://llm.test", "tok", client=lambda m, p, b: (200, {}))
+    with pytest.raises(InfraFailure, match="messages"):
+        llm.invoke("chat.completions", {"messages": []})
+    with pytest.raises(InfraFailure, match="messages"):
+        llm.invoke("chat.completions", {"messages": [{"role": "user", "content": 7}]})
+
+
+def test_chat_auth_5xx_malformed_and_live_transport_factory(monkeypatch) -> None:
+    llm = LiteLLMProvider("http://llm.test", "secret-tok", client=lambda m, p, b: (403, {}))
+    with pytest.raises(InfraFailure) as exc:
+        llm.invoke("chat.completions", {"messages": [{"role": "user", "content": "x"}]})
+    assert "secret-tok" not in str(exc.value)  # credential never echoed
+    with pytest.raises(InfraUnavailable, match="service error"):
+        LiteLLMProvider("http://llm.test", "t", client=lambda m, p, b: (503, {})).invoke(
+            "chat.completions", {"messages": [{"role": "user", "content": "x"}]}
+        )
+    with pytest.raises(InfraUnavailable, match="malformed"):
+        LiteLLMProvider("http://llm.test", "t", client=lambda m, p, b: (200, "not-json")).invoke(
+            "chat.completions", {"messages": [{"role": "user", "content": "x"}]}
+        )
+    with pytest.raises(InfraUnavailable, match="malformed"):
+        broken = LiteLLMProvider(
+            "http://llm.test", "t", client=lambda m, p, b: (200, {"no": "choices"})
+        )
+        broken.invoke("chat.completions", {"messages": [{"role": "user", "content": "x"}]})
+
+    # live transport (no injected client) routes through the module factory
+    def fake_post(url, token, path, body):
+        assert token == "live-tok" and path == "/v1/chat/completions"
+        return 200, {"choices": [{"message": {"content": "live"}}], "model": "glm-live"}
+
+    monkeypatch.setattr(infra, "_make_post_client", lambda: fake_post)
+    live = LiteLLMProvider("http://llm.test", "live-tok")
+    assert live.invoke("chat.completions", {"messages": [{"role": "user", "content": "y"}]}) == {
+        "content": "live",
+        "model": "glm-live",
+    }
+
+
+def test_chat_unconfigured_is_blocked_not_fabricated() -> None:
+    unconfigured = LiteLLMProvider(None, None)
+    with pytest.raises(InfraUnavailable, match="BLOCKED"):
+        unconfigured.invoke("chat.completions", {"messages": [{"role": "user", "content": "x"}]})

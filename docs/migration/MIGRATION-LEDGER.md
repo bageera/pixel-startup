@@ -159,6 +159,18 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G23 — Chief of Staff (owner-registered 2026-11-21; office feature: repo perspective + improvement requests)
+
+**Criteria (owner ask):** a chief-of-staff channel that reads the public repo (github.com/bageera/pixel-startup), gives perspective on what can be added to the office (e.g. email access, a budget tool), and SUBMITS improvement requests. Steps, one gate each:
+1. ✅ **Executed 2026-11-21 — LiteLLM `chat.completions` op (prerequisite for steps 2-3 AND the node-independent chat):** declared op on the G15 `LiteLLMProvider` (`infra.py`), model default from `Settings.litellm_model`, live POST transport via module factory `_make_post_client()` (httpx errors mapped to stdlib so shared normalization holds; synthetic `client=(method, path, body)` contract for tests); `Settings` honors the node env names via `AliasChoices` (`LITELLM_API_URL`/`LITELLM_API_KEY`/`LITELLM_MODEL`, plain `LITELLM_*` too, `populate_by_name=True`) so ONE secret feeds both backends. Response normalizes to `{content, model}`; unconfigured → BLOCKED message; 401/403 → InfraFailure; 5xx/timeout/malformed → InfraUnavailable; token never in results or error text (asserted). No new providers registered → the pinned `COUNT(*) == 16` provider-records test unchanged.
+2. `GET /api/v1/chief/advise` (owner session): public GitHub API repo.meta + issues.list context (honest-unavailable degrade) + office state → LLM perspective.
+3. `POST /api/v1/chief/requests`: task-store row immediately; `issues.create` via the executor ONLY with owner approval record + `GITHUB_TOKEN` (new blocker B6) → issue URL stamped on the row.
+4. Office UI: Chief button + render block in the owner-locked overlay (briefing styling, esc(), en/es keys).
+5. Chief as visible office character (sprite + employee row via deterministic tooling) — polish, last.
+
+**Tests + results (step 1):** 5 new tests (declared/normalized, messages validation, auth/5xx/malformed/live-factory, unconfigured BLOCKED, env-alias roundtrip); `make python-test` → **141 passed** (was 136), ruff clean+formatted, pyright 0 errors, `uv run pip-audit` → 0 vulnerabilities; `npm test` → 57/0.
+**Limitations:** chat is invoked in-process via the provider contract; no HTTP route surface yet (steps 2-3); no approval-gating change (model invocation mutates no pixel state).
+
 ### G20-B-REPAIR — Post-deployment integration gauntlet (2026-11-21, commit `5262bfa`)
 
 **P0 deployed reality (honest scope):** no reachable cluster API from this host (local kubeconfig targets a dead 127.0.0.1:6443 — rancher-desktop); direct pod inspection BLOCKED. Evidence therefore comes from reproducing the EXACT deployed artifacts: the published image `sha256:7fe24e84…` (G20-A, pre-G20-B) run with `NODE_UPSTREAM` to a real node + the local checkout at HEAD. Sanitized traces below are from those live processes.

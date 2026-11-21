@@ -314,7 +314,16 @@ def _register_infra(container: Container, settings: Settings) -> None:
     container.providers["infra"] = {}
     for provider_cls, url_field in infra.PROVIDERS:
         token_field = url_field.replace("_url", "_api_key" if url_field == "odoo_url" else "_token")
-        adapter = provider_cls(getattr(settings, url_field), getattr(settings, token_field, None))
+        if provider_cls is infra.LiteLLMProvider:
+            adapter = provider_cls(
+                getattr(settings, url_field),
+                getattr(settings, token_field, None),
+                model=getattr(settings, "litellm_model", None),
+            )
+        else:
+            adapter = provider_cls(
+                getattr(settings, url_field), getattr(settings, token_field, None)
+            )
         container.providers["infra"][adapter.provider_id] = adapter
         try:
             container.registry.register(
