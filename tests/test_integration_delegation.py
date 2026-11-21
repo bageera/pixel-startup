@@ -312,3 +312,158 @@ def test_api_route_end_to_end(tmp_path) -> None:
                 assert anon.status_code == 401  # fail closed
 
     anyio.run(drive)
+
+
+# --- G23-3a: plan → review → dispatch -------------------------------------------
+
+
+def _litellm_registry(hermes=None, plan_text="1. draft data\n2. confirm\n3. report"):
+    from pixel_startup.integrations.infra import LiteLLMProvider
+
+    registry = _registry(hermes=hermes)
+    stub = LiteLLMProvider(
+        "http://llm.test",
+        "tok",
+        model="glm-test",
+        client=lambda m, p, b: (
+            200,
+            {"choices": [{"message": {"content": plan_text}}], "model": "glm-test"},
+        ),
+    )
+    registry.register(
+        ProviderRegistration(
+            provider_id="litellm",
+            category=ProviderCategory.MONITORING,
+            implementation="external",
+            handler=stub,
+            capabilities=["health.read", "models.discover", "chat.completions"],
+            priority=10,
+        )
+    )
+    return registry
+
+
+def test_plan_gate_holds_until_owner_decision(tmp_path) -> None:
+    from pixel_startup.capabilities.delegation import (
+        make_plan_flow,
+    )
+    from pixel_startup.persistence.store import ApprovalStore
+
+    db = Database(tmp_path / "p1.sqlite3")
+    db.migrate()
+    binding = _provision(db, "employee.tailor", "hermes")
+    executor = _executor(db, _litellm_registry(hermes=FakeHermes()))
+    request = _req(binding, "employee.tailor", correlation="plan-1")
+    request["payload"]["plan_required"] = True  # G23-3a gate
+    request["payload"]["verify"] = True  # G23-3b requested together with the plan gate
+    result = executor.execute(request)
+    assert result["planning"] is True and result["dispatched"] is False
+    row = db.conn.execute(
+        "SELECT status, payload FROM tasks WHERE task_id = ?", (result["task_id"],)
+    ).fetchone()
+    assert row["status"] == "planning"
+    approvals = ApprovalStore(db)
+    approval = approvals.get(result["approval_request_id"])
+    assert approval is not None and approval["status"] == "pending"
+    # plan/result text is inert: authorization only ever comes from the owner record
+    approvals.decide(result["approval_request_id"], "denied", "owner.session")
+    flow = make_plan_flow(db, _litellm_registry(hermes=FakeHermes()), AuditStore(db))
+    # stale review of an already-denied plan: reconciled loudly, never dispatched
+    late = flow["review"](result["task_id"], "approved", "owner.session")
+    assert late["status"] == "cancelled" and late["dispatched"] is False
+    status = db.conn.execute(
+        "SELECT status FROM tasks WHERE task_id = ?", (result["task_id"],)
+    ).fetchone()["status"]
+    assert status == "cancelled"
+
+
+def test_approved_plan_generates_plan_then_dispatches(tmp_path) -> None:
+    from pixel_startup.capabilities.delegation import make_plan_flow
+
+    db = Database(tmp_path / "p2.sqlite3")
+    db.migrate()
+    hermes = FakeHermes()
+    binding = _provision(db, "employee.tailor", "hermes")
+    executor = _executor(db, _litellm_registry(hermes=hermes))
+    request = _req(binding, "employee.tailor", correlation="plan-2")
+    request["payload"]["plan_required"] = True
+    result = executor.execute(request)
+    flow = make_plan_flow(db, _litellm_registry(hermes=hermes), AuditStore(db))
+    plan = flow["plan_for"](result["task_id"])
+    assert "1." in plan["plan"] and plan["approval_status"] == "pending"
+    dispatched = flow["review"](result["task_id"], "approved", "owner.session")
+    assert dispatched["dispatched"] is True and dispatched["plan_review"] == "approved"
+    status = db.conn.execute(
+        "SELECT status FROM tasks WHERE task_id = ?", (result["task_id"],)
+    ).fetchone()["status"]
+    assert status == "running" and hermes.submissions == 1
+
+
+# --- G23-3b: verify-before-done (independent re-poll; NEVER a re-dispatch) -------
+
+
+def test_verification_marks_verified(tmp_path) -> None:
+    from pixel_startup.capabilities.delegation import make_result_retriever
+
+    db = Database(tmp_path / "p3.sqlite3")
+    db.migrate()
+    hermes = FakeHermes()
+    binding = _provision(db, "employee.tailor", "hermes")
+    request = _req(binding, "employee.tailor", correlation="v-1")
+    request["payload"]["verify"] = True
+    result = _executor(db, _litellm_registry(hermes=hermes)).execute(request)
+    retriever = make_result_retriever(db, _litellm_registry(hermes=hermes), AuditStore(db))
+    out = retriever(result["task_id"])
+    assert out["status"] == "verified" and out["verification"]["verdict"] == "verified"
+    again = retriever(result["task_id"])
+    assert again["status"] == "verified" and again["result"] == {"ok": 1}
+
+
+def test_verification_divergent_is_honest_not_retried(tmp_path) -> None:
+    from pixel_startup.capabilities.delegation import make_result_retriever
+
+    class ShiftingHarness(FakeHermes):
+        polls = 0
+
+        def invoke(self, operation, payload_in: dict | None = None) -> dict:
+            payload = payload_in or {}
+            if operation == "task.result":
+                ShiftingHarness.polls += 1
+                return {
+                    "supported": True,
+                    "result": {"state": "completed", "output": {"n": ShiftingHarness.polls}},
+                }
+            return super().invoke(operation, payload)
+
+    db = Database(tmp_path / "p4.sqlite3")
+    db.migrate()
+    hermes = ShiftingHarness()
+    binding = _provision(db, "employee.tailor", "hermes")
+    request = _req(binding, "employee.tailor", correlation="v-2")
+    request["payload"]["verify"] = True
+    result = _executor(db, _litellm_registry(hermes=hermes)).execute(request)
+    retriever = make_result_retriever(db, _litellm_registry(hermes=hermes), AuditStore(db))
+    out = retriever(result["task_id"])
+    # the side effect happened once; the mismatch is recorded, not re-executed
+    assert hermes.submissions == 1
+    assert out["status"] == "completed" and out["verification"]["verdict"] == "divergent"
+    row = db.conn.execute(
+        "SELECT status FROM tasks WHERE task_id = ?", (result["task_id"],)
+    ).fetchone()["status"]
+    assert row == "completed"  # stays completed with an honest unverified verdict
+
+
+def test_verification_absent_label_keeps_old_semantics(tmp_path) -> None:
+    from pixel_startup.capabilities.delegation import make_result_retriever
+
+    db = Database(tmp_path / "p5.sqlite3")
+    db.migrate()
+    hermes = FakeHermes()
+    binding = _provision(db, "employee.tailor", "hermes")
+    result = _executor(db, _litellm_registry(hermes=hermes)).execute(
+        _req(binding, "employee.tailor", correlation="v-3")
+    )
+    out = make_result_retriever(db, _litellm_registry(hermes=hermes), AuditStore(db))(
+        result["task_id"]
+    )
+    assert out["status"] == "completed" and out["verification"] is None

@@ -155,14 +155,16 @@ EMPLOYEE_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
 }
 
 TASK_TRANSITIONS: dict[str, set[str]] = {
-    "created": {"authorized", "cancelled"},
+    "created": {"authorized", "planning", "cancelled"},
+    "planning": {"authorized", "cancelled"},  # G23-3a: plan-then-review gate
     "authorized": {"dispatched", "cancelled"},
     "dispatched": {"running", "cancelled"},
     "running": {"completed", "failed", "cancelled", "waiting"},
     "waiting": {"running", "cancelled"},
-    "completed": set(),
+    "completed": {"verified"},  # G23-3b: independent verification mark
     "failed": set(),
     "cancelled": set(),
+    "verified": set(),
 }
 
 

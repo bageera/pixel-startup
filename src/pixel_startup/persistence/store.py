@@ -264,6 +264,39 @@ class TaskStore:
             raise StorageError(f"stale transition raced for {task_id}")
         return self.get(task_id) or {}
 
+    def attach(self, task_id: str, payload_patch: dict, new_status: str | None = None) -> dict:
+        """Atomic payload merge (+ optional status move, same CAS guard).
+
+        G23-3a/3b: plans and verification verdicts live in the payload column, so
+        the schema never grows for them."""
+        task = self.get(task_id)
+        if task is None:
+            raise StorageError(f"unknown task: {task_id}")
+        current = task["status"]
+        if new_status is not None and new_status not in TASK_TRANSITIONS.get(current, set()):
+            raise StorageError(f"illegal transition {current} -> {new_status}")
+        try:
+            merged = json.loads(task["payload"]) if task["payload"] else {}
+            if not isinstance(merged, dict):
+                merged = {}
+        except (json.JSONDecodeError, ValueError):
+            merged = {}
+        merged.update(payload_patch)
+        if new_status is not None:
+            cur = self.db.conn.execute(
+                "UPDATE tasks SET payload = ?, status = ?, updated_at = ?"
+                " WHERE task_id = ? AND status = ?",
+                (json.dumps(merged), new_status, _now(), task_id, current),
+            )
+        else:
+            cur = self.db.conn.execute(
+                "UPDATE tasks SET payload = ?, updated_at = ? WHERE task_id = ? AND status = ?",
+                (json.dumps(merged), _now(), task_id, current),
+            )
+        if cur.rowcount != 1:
+            raise StorageError(f"stale attach raced for {task_id}")
+        return self.get(task_id) or {}
+
 
 class ApprovalStore:
     def __init__(self, db: Database) -> None:

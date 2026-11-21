@@ -151,6 +151,7 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
     # G14: cross-harness delegation rides the executor; result retrieval exposed
     from pixel_startup.capabilities.delegation import (
         make_delegation_adapter,
+        make_plan_flow,
         make_result_retriever,
     )
 
@@ -158,6 +159,9 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
         db, container.registry, container.providers["audit"]
     )
     container.providers["delegation_results"] = make_result_retriever(
+        db, container.registry, container.providers["audit"]
+    )
+    container.providers["delegation_flow"] = make_plan_flow(  # G23-3a
         db, container.registry, container.providers["audit"]
     )
     _register_comms(container, settings)
