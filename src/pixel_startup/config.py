@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     chroma_url: str | None = None  # G11: institutional memory endpoint
     chroma_api_token: str | None = None
     chroma_timeout_seconds: float = 5.0
+    minio_endpoint: str | None = None  # G12: object storage (host[:port])
+    minio_bucket: str = "pixel-artifacts"
+    minio_access_key: str | None = None
+    minio_secret_key: str | None = None
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     port: int = 19000

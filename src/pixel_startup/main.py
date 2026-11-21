@@ -216,6 +216,33 @@ def _register_memory(container: Container, settings: Settings) -> None:
             pass  # unconfigured/unreachable endpoint: candidate stays the honest state
 
 
+def _register_storage(container: Container, settings: Settings) -> None:
+    """G12: MinIO object storage; live client only when endpoint+creds exist."""
+    from pixel_startup.integrations.minio import MinioStorageProvider, SigV4Client
+
+    client = None
+    if settings.minio_endpoint and settings.minio_access_key and settings.minio_secret_key:
+        client = SigV4Client(settings.minio_endpoint, settings.minio_access_key,
+                             settings.minio_secret_key)
+    provider = MinioStorageProvider(settings.minio_bucket, client)
+    container.registry.register(
+        ProviderRegistration(
+            provider_id=provider.provider_id,
+            category=ProviderCategory.OBJECT_STORAGE,
+            implementation="external",
+            handler=provider,
+            endpoint=settings.minio_endpoint,
+            capabilities=list(provider.capabilities),
+            priority=10,
+            detail=("candidate: contract-tested vs FakeS3; live credentials configured"
+                    if client is not None else
+                    "candidate: contract-tested vs FakeS3; live rows BLOCKED"
+                    " (no endpoint configured)"),
+        )
+    )
+    container.registry.transition(provider.provider_id, ProviderState.CANDIDATE)
+
+
 def _register_hermes(container: Container, settings: Settings) -> None:
     """G8: Hermes filesystem adapter; promotion to QUALIFIED is evidence-gated.
 
@@ -259,6 +286,7 @@ async def lifespan(app: FastAPI):
     _register_openclaw(container, settings)
     _register_hermes(container, settings)
     _register_memory(container, settings)
+    _register_storage(container, settings)
     # G10/G6: snapshot live provider state into provider_records (upsert-only)
     from pixel_startup.persistence.store import sync_provider_records
 
