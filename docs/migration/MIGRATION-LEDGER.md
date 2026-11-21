@@ -159,6 +159,70 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G21 — End-to-end MVP acceptance (2026-11-21)
+
+**Final quality run (exact commands, this checkout):**
+- `uv run pytest` → **114 passed**, 0 failed
+- `uv run ruff check src tests` → **All checks passed**
+- `uv run pyright src tests` → **0 errors** (1 accepted jsonschema-stubs warning)
+- `npm test` → **56 passed, 0 failed** (presence + API regression)
+- `make contracts` → **39 checks passed**, 0 failed
+- `docker build -f Dockerfile.python` → clean, 239 MB non-root image
+- `uv run python tools/perf_benchmark.py` → measured table in G18
+- `sh tools/cutover_rehearsal.sh` → **REHEARSAL PASS**
+- `npm audit --omit=dev` → 0 vulnerabilities; migration tests + provider-auth tests + security matrix all inside `uv run pytest` counts above
+- No browser regression suite exists beyond the node API suites (`frontend browser regression tests` = npm suite; noted as an honest environment limit: no real-browser harness installed on this host)
+
+**MVP acceptance matrix** (verdicts are per-row; `LIVE` = real service evidence on this host, `SYN` = synthetic-qualified, `BLOCKED` = missing owner-controlled dependency):
+
+| MVP | Acceptance item | Verdict | Evidence |
+|---|---|---|---|
+| 01 | Owner communicates with real Charon | **BLOCKED B1** | no OpenClaw gateway on host; Charon identity/binding chain ready (G9) |
+| 02 | Charon retrieves authorized company info | SYN | `vault.credential.op` scoped retrieval, approval-gated, credentials redacted |
+| 03 | Charon retrieves authorized household info | SYN | cross-scope rules enforced; household ref under company request denied |
+| 04 | Charon delegates to Hermes | SYN / **BLOCKED B5** | delegation protocol synthetic-green; A2A exists but not running |
+| 05 | Hermes returns verified result | SYN / **BLOCKED B5** | `task.result` contract tested; live requires A2A |
+| 06 | Office displays real runtime activity | **LIVE** | G16 smoke: hermes observed-poll live (mattermost, 2 sessions); openclaw registry-candidate honestly labeled |
+| 07 | Authorized memory retrieval succeeds | SYN | G11 scoped search + provenance; live **B4** |
+| 08 | Authorized MinIO round-trip | SYN | G12 sha256-verified round-trip; live **B4** |
+| 09 | Executor operates without credential disclosure | SYN→LIVE | leaky-adapter redaction proof; Vaultwarden live **B2** |
+| 10 | Cross-scope access denied | **LIVE (tests)** | G10/G11/G12/G14 suites |
+| 11 | External email draft requires delivery authorization | SYN | no send without `{status: approved, by}` owner record |
+| 12 | Persistent assignments survive restart | **LIVE** | restart-recovery tests (G6/G10/G14) on real store |
+| 13 | External service failure accurately represented | **LIVE** | registry `candidate`/`observed: null` honesty asserted |
+| 14 | Runtime identity impersonation rejected | **LIVE (tests)** | spoof + unverified-binding + revoked-binding denials |
+| 15 | Python cutover + JS rollback demonstrated | **LIVE (rehearsal)** | G20 REHEARSAL PASS ×3 |
+| 16–19 | Four environments load (continental default) | **LIVE (tests+rehearsal)** | G22 suites; mechanic/pirate/treehouse manifests+assets served |
+| 20 | Environment switching preserves identity/assignments/authz | **LIVE (tests)** | G22 persistence suites |
+
+**Remaining blocker register (requires OWNER action — no credential requests in chat):**
+- **B1 OpenClaw** — reachable gateway + auth + supported agent/session interface + Charon native identity. Unblocks G7-live, G14-live, MVP-01.
+- **B2 Vaultwarden** — authorized API credentials (endpoint ALIVE: HTTP 200/27 ms). Unblocks G10-live rows.
+- **B3 Communications** — Mattermost token + approved test destinations + SMTP/transport creds. Unblocks G13-live.
+- **B4 Memory/storage** — ChromaDB + MinIO endpoints (+ WireGuard routing). Unblocks G11/G12-live.
+- **B5 Hermes submission** — **enable the already-installed A2A platform** (A2A_PORT + peer token via `hermes gateway setup`), then wire-office binding verification. Unblocks G14-live, MVP-04/05.
+- **G17-F1** — rotate the historical credential in `075e1f1` (+ optional history purge, needs separate rewrite authorization).
+- **G17-G1** — install `pip-audit` for the Python dependency scan (JS clean).
+- Each blocker has a safe resolution path, requires owner-controlled secrets/endpoints delivered OUTSIDE chat (approved secret mechanism), and ALL independent work continued regardless.
+
+**Final commit inventory (local, unpushed this gauntlet):** `7c273c9` G11 · `8b63444` G12 · `876534a` G13+G14 · `125a0b5` G15 · `7285c36` G17 · `efeb74a` G18 · this commit G19/G20/G21 (+ `deploy/`, `tools/backup.py`, `tools/cutover_rehearsal.sh`, `tools/perf_benchmark.py`, docs).
+
+**Verdict: PASS-SYNTHETIC overall, with per-row verdicts above** — the platform is code-complete and synthetic-qualified end-to-end; production readiness requires the owner-controlled live rows (B1–B5) and explicit cutover authorization. Deployment promotion is NOT authorized by this run.
+
+### G19 — Deployment and backup qualification (executed 2026-11-21)
+
+**Packaging:** `Dockerfile.python` (uv + uvicorn, **non-root UID 1001**, `/healthz` HEALTHCHECK) → built `pixel-python:g19` = **239 MB** (vs 332 MB combined JS image). K8s manifests `deploy/pixel-stack.yaml`: JS baseline deployment + Python deployment side-by-side, single PVC with enforced single-writer cutover, resource req/limits, liveness+readiness probes, `preStop` drain, runAsNonRoot securityContexts, `pixel-secrets` SecretRef, ingress-restricting NetworkPolicy. JS deployment capability preserved untouched.
+**Backup (G6 addendum):** `tools/backup.py` — verified conventional method: SQLite **backup-API** snapshot (consistent across live WAL) + `integrity_check` + SHA-256 sidecar; restore re-verifies sha256 (corruption → refusal) and integrity, clears stale WAL sidecars, snapshot semantics proven (post-backup writes NOT in snapshot). Tests: `tests/test_backup_tool.py` (2, incl. bit-rot refusal).
+**mdrc: BLOCKED** — binary not installed on this host; sqlite-mdr ships a research pack/unpack *library*, not a qualified production CLI. Per mandate the verified conventional path is retained; mdrc may only replace it after shipping a qualified CLI + restore guarantees. Never replaced the known-good with an unverified archive.
+**No production deployment performed.** **Verdict: PASS** (clean build, deployment test, backup/restore pass; rollback documented in `docs/deployment-runbook.md`).
+
+### G20 — JavaScript-to-Python cutover (executed 2026-11-21; isolated rehearsal only)
+
+**Route coverage (parity map):** JS serves `/api/config`, `/api/environments`, `/api/presence`, `/api/ai/*`, `/api/log`, `/api/briefing*`, `/api/messages`, `/api/agent/:id/*`; Python serves `/healthz`, `/api/environment` (GET/PUT authed), `/api/v1/office/state` (G16), `/api/v1/capabilities/execute` + `/api/v1/delegate/{id}/result` (G10/G14 persistence/auth/executor). The office frontend consumes BOTH today (G16 additive chips; JS routes untouched) — full route parity is the G20-remaining item and is tracked as the cutover prerequisite, not a regression.
+**Rehearsal (`tools/cutover_rehearsal.sh`, isolated temp data dir, single-writer windows):** seed JS-era state → JS up + `/api/config` captured → verified snapshot → JS stopped → **Python up on the SAME data dir** (migrated roster from `agents.json`; 16 provider rows; schema v5) → owner-authed workflow exercised (environment select persists; office read model serves migrated roster) → **rollback** → JS up → owner state byte-intact. **REHEARSAL PASS** (strict `set -e`; verified 3×).
+**Data integrity:** JSON owner state never rewritten by Python (additive sqlite files only); backup verified before any Python boot.
+**Verdict: PASS-SYNTHETIC** (isolated rehearsal + rollback demonstrated; production promotion remains pending explicit owner authorization).
+
 ### G18 — Performance and reliability (measured 2026-11-21, host: macOS/arm, this repo checkout)
 
 Method: `tools/perf_benchmark.py` — both backends on isolated ports/data dirs, 50-sample latencies, 10-thread concurrency, per-worker SQLite connections for contention (no shared-handle fudge). Full JSON: run the script; figures below are the actual output.

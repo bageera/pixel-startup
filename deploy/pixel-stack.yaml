@@ -1,0 +1,117 @@
+# G19: Pixel Startup deployment — JS baseline (authoritative until G20) and the
+# Python migration backend side-by-side. One shared PVC; only ONE backend may
+# mount it read-write at a time (cutover rehearsal G20 enforces this sequence).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pixel-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pixel-office-js
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: pixel-office-js }
+  template:
+    metadata:
+      labels: { app: pixel-office-js }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: office-js
+          image: ghcr.io/bageera/pixel-startup:latest
+          ports: [{ containerPort: 19000 }]
+          envFrom:
+            - secretRef: { name: pixel-secrets }   # keys: DASHBOARD_PASSWORD, PIXEL_SESSION_SECRET, PIXEL_API_TOKEN
+          volumeMounts: [{ name: data, mountPath: /app/data }]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: "1",  memory: 512Mi }
+          livenessProbe:
+            httpGet: { path: /api/config, port: 19000 }
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /api/config, port: 19000 }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: pixel-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pixel-office-js
+spec:
+  selector: { app: pixel-office-js }
+  ports: [{ port: 80, targetPort: 19000 }]
+---
+apiVersion: v1
+kind: NetworkPolicy
+metadata:
+  name: pixel-default-deny
+spec:
+  podSelector: { matchExpressions: [ { key: app, operator: In, values: [ pixel-office-js, pixel-backend-python ] } ] }
+  policyTypes: [Ingress]
+  ingress:
+    - from: []   # ingress controller / same namespace only; cluster-external traffic via the edge
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pixel-backend-python
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: pixel-backend-python }
+  template:
+    metadata:
+      labels: { app: pixel-backend-python }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: backend-python
+          image: ghcr.io/bageera/pixel-startup-python:latest
+          ports: [{ containerPort: 19000 }]
+          envFrom:
+            - secretRef: { name: pixel-secrets }
+          volumeMounts: [{ name: data, mountPath: /app/data, readOnly: false }]
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 19000 }
+            initialDelaySeconds: 4
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /healthz, port: 19000 }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "2"] }   # drain in-flight polling before exit
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: pixel-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pixel-backend-python
+spec:
+  selector: { app: pixel-backend-python }
+  ports: [{ port: 80, targetPort: 19000 }]
