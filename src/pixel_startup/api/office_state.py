@@ -9,12 +9,108 @@ Status provenance is explicit: `observed` (live adapter poll) vs `registry`
 
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
-from pixel_startup.persistence.db import Database
+from pixel_startup.persistence.db import Database, StorageError
 from pixel_startup.persistence.store import EmployeeStore
+from pixel_startup.security.auth import require_auth
 
 router = APIRouter()
+_DEFAULT_GRANTS = {
+    "hermes": ["delegate.hermes.task"],
+    "openclaw": ["delegate.openclaw.task"],
+}
+
+
+class OnboardRequest(BaseModel):
+    """CHO-authored harness onboarding (G10 lifecycle): the admin session is
+    the trust boundary — register, bind the native identity, verify, activate."""
+
+    employee_id: str = Field(min_length=1, max_length=120)
+    display_name: str = Field(min_length=1, max_length=120)
+    harness: str
+    native_agent_id: str = Field(min_length=1, max_length=160)
+    harness_instance_id: str = Field(min_length=1, max_length=160)
+    sprite_id: str = "char_2"
+    profile_label: str = ""
+    grants: list[str] | None = None
+
+
+@router.post("/api/v1/office/onboard")
+async def onboard_employee(
+    body: OnboardRequest, request: Request, _auth: str = Depends(require_auth)
+) -> dict:
+    if body.harness not in ("hermes", "openclaw"):
+        raise HTTPException(status_code=400, detail=f"unsupported harness: {body.harness}")
+    container = request.app.state.container
+    store: EmployeeStore = container.providers["employees"]
+    try:
+        store.upsert(
+            {
+                "employee_id": body.employee_id,
+                "display_name": body.display_name,
+                "sprite_id": body.sprite_id,
+                "harness": body.harness,
+                "operational_scope": "company",
+                "authorization_context": (
+                    body.grants if body.grants is not None else _DEFAULT_GRANTS[body.harness]
+                ),
+                "lifecycle": "registered",
+                "asserted_id": body.employee_id,
+            }
+        )
+        binding = store.bind(
+            body.employee_id,
+            body.harness,
+            body.native_agent_id,
+            body.harness_instance_id,
+            body.profile_label,
+        )
+        store.verify_binding(body.employee_id, binding["binding_id"])
+        active = store.set_lifecycle(body.employee_id, "available")
+    except StorageError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    presence = {"online": None}
+    for reg in container.registry.all():
+        handler = getattr(reg, "handler", None)
+        if (
+            reg.category.value != "agent_harness"
+            or handler is None
+            or not hasattr(handler, "probe")
+        ):
+            continue
+        try:
+            probe = handler.probe()
+            if worker_matches(probe, body.harness, body.native_agent_id):
+                presence = {"online": bool(probe["online"]), "source": "observed-poll"}
+        except Exception:
+            presence = {"online": None, "source": "probe-failed"}  # honest
+    return {
+        "employee": {
+            "employee_id": active["employee_id"],
+            "display_name": active["display_name"],
+            "harness": active["harness"],
+            "lifecycle": active["lifecycle"],
+            "binding_verified": True,
+        },
+        "binding_id": binding["binding_id"],
+        "presence": presence,
+    }
+
+
+def worker_matches(probe: dict, harness: str, native_agent_id: str) -> bool:
+    """Presence match: any live session whose surface/session id carries the
+    native agent id — best-effort; None presence stays honest when ambiguous."""
+    if harness != "hermes":
+        return False
+    sessions = probe.get("sessions") or []
+    for entry in sessions:
+        haystack = f"{entry.get('session_id', '')} {entry.get('surface', '')}"
+        if native_agent_id in haystack:
+            return True
+    return bool(sessions)
+
 
 _TASK_ACTIVE = ("dispatched", "running", "waiting")
 
