@@ -51,9 +51,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/bageera/pixel-startup-python
-          # main -> latest + main; v1.2.0 -> 1.2.0 + latest (default flavor)
+          # main -> latest (+ main); a v1.2.3 tag -> 1.2.3 + latest
           tags: |
-            type=ref,event=tag
+            type=raw,value=main
+            type=semver,pattern={{version}}
 
       - name: Build and push
         uses: docker/build-push-action@v6
