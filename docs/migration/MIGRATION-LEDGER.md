@@ -176,6 +176,8 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 **Image (owner-authorized "commit and push" 2026-11-21):** `ghcr.io/bageera/pixel-startup-python:latest` = **sha256:fe439805b0f658e15f2dde52e7dec98d0020b97226d0559cec586d349145ccfa**, content = commit `7f140f9` (G23 steps 1-2). Smoke on the PULLED tag: /healthz 200 @9 s, / 200, /api/v1/chief/advise 401 unauth (route present + auth-gated). Pulling hosts: `docker pull` + `kubectl apply` unchanged; chat stays honest-503 via LITELLM until the owner adds `LITELLM_API_KEY` to `pixel-secrets`.
 
+**Release v1.2.0 (2026-11-21):** tagged annotated `v1.2.0` @ `efc8824` (CHANGELOG folded: G22 packs + G23 chief rails/plan/verify; package.json + pyproject + uv.lock synced to 1.2.0). Image `ghcr.io/bageera/pixel-startup-python:latest` = **sha256:6f6a36417eb58469db2aaed3224f69ac004ba15ce8158d8590b7042a5bacc504**, content = `efc8824` (v1.2.0 tree). Pulled-tag smoke: /healthz 200 @9 s, / 200, plan route 401 unauth (G23-3 routes present). Pulling hosts: `docker pull` + `kubectl apply -f deploy/pixel-stack.yaml`.
+
 ### G20-B-REPAIR — Post-deployment integration gauntlet (2026-11-21, commit `5262bfa`)
 
 **P0 deployed reality (honest scope):** no reachable cluster API from this host (local kubeconfig targets a dead 127.0.0.1:6443 — rancher-desktop); direct pod inspection BLOCKED. Evidence therefore comes from reproducing the EXACT deployed artifacts: the published image `sha256:7fe24e84…` (G20-A, pre-G20-B) run with `NODE_UPSTREAM` to a real node + the local checkout at HEAD. Sanitized traces below are from those live processes.
