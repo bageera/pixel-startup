@@ -472,13 +472,25 @@
                 ]);
                 if (!svcRes.ok) throw new Error('services http ' + svcRes.status);
                 const svc = await svcRes.json();
+                // G28: user-facing integration buckets over the same registry rows
+                const GROUPS = {
+                    Email: ['email', 'freshrss'],
+                    Communication: ['mattermost', 'litellm'],
+                    'Memory & Storage': ['chromadb', 'minio', 'pixel_startup_sqlite'],
+                };
+                const byId = Object.fromEntries((svc.services || []).map(s => [s.id, s]));
                 const stateColor = { active: 'var(--ok)', qualified: 'var(--accent)', candidate: 'var(--warn)', registered: 'var(--text-dim)' };
-                const svcRows = (svc.services || []).map(s =>
-                    `<span class="svc" title="${esc2(s.state)} · ${esc2(String(s.observed !== null))}"><span class="dot" style="color:${s.connected ? stateColor[s.state] || 'var(--accent)' : 'var(--bad)'};background:currentColor;"></span>${esc2(s.id)}${s.configured ? '' : ' <i style="opacity:.6;">offline</i>'}</span>`
-                ).join('');
+                const cell = (s) =>
+                    `<span class="svc" title="${esc2(s.state)} · observed: ${esc2(String(s.observed !== null))}"><span class="dot" style="color:${s.connected ? stateColor[s.state] || 'var(--accent)' : 'var(--bad)'};background:currentColor;"></span>${esc2(s.id)}${s.configured ? '' : ' <i style="opacity:.6;">offline</i>'}</span>`;
+                let html = '';
+                for (const [label, ids] of Object.entries(GROUPS)) {
+                    html += `<span style="color:var(--text-dim);font-size:11px;align-self:center;">${esc2(label)}:</span> `
+                        + ids.map((id) => byId[id] ? cell(byId[id]) : '').join('');
+                }
+                const rest = (svc.services || []).filter((s) => !Object.values(GROUPS).flat().includes(s.id)).map(cell).join('');
                 const roster = stateRes && stateRes.employees
                     ? ` <span class="svc" title="office roster (observed)">👥 ${stateRes.employees.length} in roster</span>` : '';
-                body.innerHTML = svcRows + roster;
+                body.innerHTML = html + rest + roster;
             } catch (e) {
                 body.innerHTML = '<span class="svc" style="color:var(--warn);">● python backend (api/v1) not reachable from this origin — node-only dev mode; office/compat APIs live</span>';
             }

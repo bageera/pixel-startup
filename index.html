@@ -29,6 +29,9 @@
             background: #e8e4d9;
         }
         
+        #ui.hud-hidden > *:not(#hudCollapse) { display: none; }
+        #hudCollapse { display: inline-block; }
+
         #ui {
             position: absolute;
             top: 10px;
@@ -144,6 +147,18 @@
             localStorage.setItem('pixel_lang', lang);
             applyI18n();
         }
+
+        // G28: HUD collapse — hide all overlay chrome except the toggle itself.
+        function toggleHud() {
+            const ui = document.getElementById('ui');
+            const hidden = ui.classList.toggle('hud-hidden');
+            localStorage.setItem('pixel_hud_hidden', hidden ? '1' : '0');
+        }
+
+        // restore G28 HUD state at boot
+        if (localStorage.getItem('pixel_hud_hidden') === '1') {
+            window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').classList.add('hud-hidden'));
+        }
     </script>
 </head>
 <body>
@@ -156,6 +171,7 @@
             <div id="langToggle" style="margin-top:6px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="setLang(LANG==='en'?'es':'en')" title="Language / Idioma">🌐 <span id="langLabel">EN</span></div>
             <div id="ownerLoginBtn" style="margin-top:2px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="ownerLogin()" title="Owner login (AI Director + briefings)">🔒 <span data-i18n="ownerLogin">Owner login</span></div>
             <div id="hudVersion" style="margin-top:2px;font-size:10px;color:#6b7280;"></div>
+            <div id="hudCollapse" style="margin-top:4px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="toggleHud()" title="Hide / show the HUD overlay">◱ HUD</div>
         </div>
     </div>
 
