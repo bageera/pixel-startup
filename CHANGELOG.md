@@ -3,6 +3,15 @@
 All notable changes to **Pixel Startup** (formerly "Pixel Office"; the visual environment keeps that name) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Silicon Garage office environment:** fifth original flat pack (`garage` — the silicon-valley startup garage: whiteboard, neon sign, roller shutter, string lights, server rack, pizza boxes; bare concrete floor) via `tools/generate-environments.py` (+ decor branch, palette), deterministic like the others — shared collision topology, `validate:` BFS nav green; `tests/api-baseline.js` count 4→5 + pack-asset loop.
+- **CI publishes the image:** `.github/workflows/python-image.yml` — full python gate (pytest, ruff, pyright, pip-audit) + node gate, then build/push `ghcr.io/bageera/pixel-startup-python` (`main` + `latest`; `v*` tag → semver + `latest`) with `GITHUB_TOKEN` only, gha build cache; repo default workflow token flipped to read/write. CI also caught three test-hermeticity bugs (host-dependent `~/.hermes` probes) — fixed via a fabricated controlled Hermes home (python conftest fixture + node `HERMES_HOME`).
+
+### Changed
+- **README rewritten for the v1.2.0 reality:** python backend first (uv/uvicorn run steps), the 🧑‍💼 onboarding checklist (secrets keys per integration + A2A enable), backend API table (chief/delegate routes), environments section, CI deploy notes; node-era deploy prose retired to the CI publish flow.
+
 ## [1.2.0] - 2026-11-21
 
 ### Added

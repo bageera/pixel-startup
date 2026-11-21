@@ -1,6 +1,6 @@
 {
   "boot": {
-    "startupMs": 309,
+    "startupMs": 310,
     "log": [
       "[DEPRECATED] node backend is in strangler mode as of the G20 cutover: python (pixel_startup) fronts this service; migrate routes to python and retire this process once the /api surface is fully native.",
       "Using initial configuration",
@@ -257,26 +257,37 @@
       "status": 200,
       "bodyShape": {
         "agents": {
-          "array": 0,
-          "of": null
+          "array": 2,
+          "of": {
+            "detail": "string",
+            "key": "string",
+            "name": "string",
+            "runtime": "string",
+            "surface": "string"
+          }
         },
         "checkedAt": "string",
         "hermes": {
           "gateway": {
             "active_agents": "number",
-            "pid": "null",
+            "pid": "number",
             "state": "string"
           },
           "home": "string",
           "online": "boolean",
           "platforms": {
-            "array": 0,
-            "of": null
+            "array": 1,
+            "of": "string"
           },
           "runtime": "string",
           "sessions": {
-            "array": 0,
-            "of": null
+            "array": 1,
+            "of": {
+              "pid": "number",
+              "session_id": "string",
+              "started_at": "number",
+              "surface": "string"
+            }
           }
         },
         "openclaw": {

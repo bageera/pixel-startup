@@ -204,10 +204,10 @@ const stopServer = () => new Promise((resolve) => {
   // --- G22 environments ---
   r = await req('GET', '/api/environments');
   const envCatalog = JSON.parse(r.body);
-  check('GET /api/environments → 4 packs, continental default',
-    r.status === 200 && envCatalog.length === 4
+  check('GET /api/environments → 5 packs, continental default',
+    r.status === 200 && envCatalog.length === 5
     && envCatalog.some(e => e.id === 'continental' && e.default)
-    && ['mechanic', 'pirate', 'treehouse'].every(id => envCatalog.some(e => e.id === id)));
+    && ['mechanic', 'pirate', 'treehouse', 'garage'].every(id => envCatalog.some(e => e.id === id)));
   r = await req('GET', '/assets/environments/continental.manifest.json');
   let manifest = null;
   try { manifest = JSON.parse(r.body); } catch (e) { /* malformed */ }
@@ -216,7 +216,7 @@ const stopServer = () => new Promise((resolve) => {
     && manifest.collision.length === 25 && manifest.collision.every(rows => rows.length === 20));
   check('manifest anchors + workstations present per pack',
     manifest && manifest.anchors && Array.isArray(manifest.workstations) && manifest.workstations.length > 0);
-  for (const id of ['mechanic', 'pirate', 'treehouse']) {
+  for (const id of ['mechanic', 'pirate', 'treehouse', 'garage']) {
     const m = await req('GET', `/assets/environments/${id}.manifest.json`);
     const png = await req('GET', `/assets/environments/${id}.png`);
     check(`pack ${id}: manifest + background load`, m.status === 200 && png.status === 200);

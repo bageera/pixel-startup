@@ -74,6 +74,16 @@ ENVS = {
             "lamp": (255, 220, 140),
         },
     },
+    "garage": {
+        "name": "Silicon Garage",
+        "art_style": "Silicon Valley garage startup office (original, non-derivative)",
+        "palette": {
+            "floor_a": (186, 182, 176), "floor_b": (170, 166, 160), "tile_bevel": (212, 208, 202),
+            "wall": (44, 48, 62), "wall_trim": (232, 234, 228), "accent": (255, 96, 120),
+            "rug": (56, 62, 92), "furniture": (72, 66, 62), "chair": (38, 46, 62),
+            "lamp": (255, 228, 148),
+        },
+    },
 }
 
 
@@ -160,6 +170,31 @@ def _decor(env_id: str, d: ImageDraw.ImageDraw, env: dict) -> None:
             d.line([cx, cy - 16, cx, cy + 16], fill=p["wall_trim"])
         d.line([320, 12, 320, 60], fill=p["furniture"])  # mast hint
         _rug(d, env)
+    elif env_id == "garage":
+        # whiteboard on the left wall (marker streaks)
+        d.rectangle([56, 96, 124, 288], fill=(242, 240, 234), outline=p["furniture"])
+        for i, y0 in enumerate((120, 156, 192, 228)):
+            d.line([64, y0, 64 + (84 - 12 * i), y0], fill=p["furniture"], width=2)
+        # neon startup sign on the right wall + glow
+        d.rectangle([588, 88, 626, 176], fill=p["accent"], outline=p["wall"])
+        for cy in (104, 134, 164):
+            d.ellipse([596, cy - 6, 618, cy + 6], fill=(255, 214, 222), outline=p["wall"])
+        # roller-shutter slats on the back wall (garage door hint)
+        for sx in range(356, 612, 26):
+            d.line([sx, 4, sx, 58], fill=p["wall_trim"])
+        # string lights across the ceiling line
+        d.line([12, 66, 308, 66], fill=p["furniture"])
+        d.line([308, 66, 628, 76], fill=p["furniture"])
+        for lx in range(24, 620, 44):
+            d.ellipse([lx - 3, 68, lx + 3, 80], fill=p["lamp"], outline=p["furniture"])
+        # stacked pizza boxes + server-rack blinkens in a corner
+        for i, cy in enumerate((606, 622, 638)):
+            d.rectangle([84, cy - 8, 132, cy], fill=p["furniture"] if i % 2 else p["wall_trim"],
+                        outline=p["wall"])
+        for cy in (320, 352, 384, 416):
+            d.rectangle([598, cy - 6, 620, cy + 6], fill=p["furniture"], outline=p["wall"])
+            d.ellipse([606, cy - 2, 612, cy + 2], fill=p["accent"])
+        # no rug: bare concrete is the garage look (accent-mixed rug reads neon)
     else:  # treehouse
         for cx, cy in ((72, 144), (600, 144), (72, 620), (600, 620)):
             d.rectangle([cx - 10, cy - 30, cx + 10, cy + 30], fill=p["furniture"], outline=p["wall"])
