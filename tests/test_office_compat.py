@@ -207,7 +207,23 @@ def test_config_save_preserves_environment_and_writes_shared_files(tmp_path):
                 assert r.status_code == 200
                 data = json.loads((tmp_path / "data" / "pixel-config.json").read_text())
                 assert data["environment"] == "continental"  # never erased by dashboard edit
-                assert json.loads((tmp_path / "data" / "agents.json").read_text()) == AGENTS
+                # G24 invariant: the chief human is appended when a save omits him
+                expected_agents = json.loads(json.dumps(AGENTS)) + [
+                    {
+                        "id": 6,
+                        "name": "Ghostface",
+                        "role": "Owner",
+                        "room": "Reception",
+                        "color": 6,
+                        "x": 420,
+                        "y": 180,
+                        "state": "idle",
+                        "active": True,
+                    }
+                ]
+                assert (
+                    json.loads((tmp_path / "data" / "agents.json").read_text()) == expected_agents
+                )
                 map_data = json.loads((tmp_path / "data" / "map.json").read_text())
                 assert map_data["rooms"] == [{"name": "Reception", "x": 320, "y": 220}]
 

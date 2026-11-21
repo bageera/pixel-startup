@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 - **README rewritten for the v1.2.0 reality:** python backend first (uv/uvicorn run steps), the 🧑‍💼 onboarding checklist (secrets keys per integration + A2A enable), backend API table (chief/delegate routes), environments section, CI deploy notes; node-era deploy prose retired to the CI publish flow.
+- **Dashboard on native api/v1 (G26):** the editor surface (config/rooms/collision/move-in/version/auth-check) is served natively by the python backend at `/api/v1/*` (same byte-parity stores, no node proxy hop); dashboard.html speaks v1 first with legacy-compat fallback for node-only dev mode. OfficeState parity upgraded to post-G24 semantics (wipe guards, Ghostface invariant, startup no-erase) for both surfaces.
 - **Dashboard modernized (G25):** 32-bit chrome over the 8-bit pixel art layer — truecolor depth (alpha/glass/gradients/glow) via one CSS-variable theme (deep-space background, sky→violet accents); sprites and the collision grid stay `image-rendering: pixelated`; fixed the `scrolelbar` typo. New backend ops strip reads the api/v1 surface (`GET /api/v1/health/services` + `GET /api/v1/office/state`) and degrades honestly to "python backend not reachable" in node-only dev mode.
 
 ## [1.2.0] - 2026-11-21

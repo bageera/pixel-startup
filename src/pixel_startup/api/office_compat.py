@@ -176,6 +176,10 @@ class OfficeState:
             self.environment = env.strip()
         else:
             self.environment = environment_default()
+        legacy_startup = (legacy or {}).get("startup") if isinstance(legacy, dict) else None
+        self.startup = self._merge_startup(
+            legacy_startup if isinstance(legacy_startup, dict) else None, {}
+        )
         if not self._map_path().exists():
             self.persist_map({"rooms": self.rooms, "collision": (map_data or {}).get("collision")})
 
@@ -189,21 +193,61 @@ class OfficeState:
         _wj(self._map_path(), merged)
         return merged
 
-    # --- config shape (mirrors GET/POST /api/config) ------------------------------------------
+    # --- config shape (mirrors GET/POST /api/config; post-G24 wipe guards) ---------------------
     def config_payload(self) -> dict:
-        return {"agents": self.agents, "rooms": self.rooms, "environment": self.environment}
+        return {
+            "agents": self.agents,
+            "rooms": self.rooms,
+            "environment": self.environment,
+            "startup": self.startup,
+        }
+
+    @staticmethod
+    def _merge_startup(new: dict | None, prev: dict) -> dict:
+        merged = dict(prev)
+        if isinstance(new, dict):
+            if isinstance(new.get("direction"), str):
+                merged["direction"] = new["direction"]
+            if isinstance(new.get("goals"), list):
+                merged["goals"] = [str(g).strip() for g in new["goals"] if str(g).strip()]
+        merged.setdefault("direction", "")
+        merged.setdefault("goals", [])
+        return merged
 
     def save_config(self, body: dict) -> dict:
-        # node parity: a dropped/invalid array RESETS to the built-in defaults
-        agents = body.get("agents") if isinstance(body, dict) else None
-        rooms = body.get("rooms") if isinstance(body, dict) else None
-        self.agents = [dict(a) for a in DEFAULT_AGENTS] if not isinstance(agents, list) else agents
-        self.rooms = [dict(r) for r in DEFAULT_ROOMS] if not isinstance(rooms, list) else rooms
+        # node parity: a dropped/invalid array RESETS to the built-in defaults.
+        # G24 wipe guard: an EMPTY array means "not provided" — never fire the
+        # owner; the chief human (Ghostface, Owner) survives any partial save.
+        agents_in = body.get("agents") if isinstance(body, dict) else None
+        rooms_in = body.get("rooms") if isinstance(body, dict) else None
+        prev_agents, prev_rooms = list(self.agents), list(self.rooms)
+        self.agents = (
+            [dict(a) for a in DEFAULT_AGENTS]
+            if not isinstance(agents_in, list)
+            else list(agents_in)
+        )
+        if not self.agents:
+            self.agents = prev_agents or [dict(a) for a in DEFAULT_AGENTS]
+        if not any(a.get("name") == "Ghostface" for a in self.agents):
+            ghost = next(a for a in DEFAULT_AGENTS if a["name"] == "Ghostface")
+            self.agents.append(dict(ghost))
+        self.rooms = (
+            [dict(r) for r in DEFAULT_ROOMS] if not isinstance(rooms_in, list) else list(rooms_in)
+        )
+        if not self.rooms:
+            self.rooms = prev_rooms or [dict(r) for r in DEFAULT_ROOMS]
         env = body.get("environment") if isinstance(body, dict) else None
         if not isinstance(env, str) or not env.strip():
             env = self.environment
         self.environment = env
-        config = {"agents": self.agents, "rooms": self.rooms, "environment": self.environment}
+        new_startup = body.get("startup") if isinstance(body, dict) else None
+        self.startup = self._merge_startup(new_startup, self.startup)
+        config = {
+            "agents": self.agents,
+            "rooms": self.rooms,
+            "environment": self.environment,
+            "startup": self.startup,
+        }
         _wj(self._config_path(), config)
         _wj(self._agents_path(), self.agents)
         self.persist_map({"rooms": self.rooms})

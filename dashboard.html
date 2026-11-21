@@ -378,10 +378,24 @@
         let isMouseDown = false;
 
         // AUTH — dashboard shares the office admin session (pixel_session cookie);
+        // === G26 api/v1-first fetch: v1 route when the origin speaks it, legacy compat fallback ===
+        async function fetchApi(method, pathV1, pathLegacy, payloadBody) {
+            const opts = {
+                method,
+                headers: payloadBody !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+                body: payloadBody !== undefined ? JSON.stringify(payloadBody) : undefined
+            };
+            try {
+                const r = await fetch(pathV1, opts);
+                if (r.status !== 404 && r.status < 500) return r;  // v1 answered honestly
+            } catch (e) { /* origin lacks v1 → legacy */ }
+            return fetch(pathLegacy, opts);
+        }
+
         // /api/auth/check is server truth: valid session → straight in, else login.
         async function initApp() {
             try {
-                const r = await fetch('/api/auth/check');
+                const r = await fetchApi('GET', '/api/v1/auth/check', '/api/auth/check');
                 if (r.ok) {
                     sessionStorage.setItem('pixelAdminAuth', 'true');
                     await showDashboard();
@@ -493,13 +507,13 @@
             const box = document.getElementById('moveInChecks');
             try {
                 const [mvRes, cfgRes] = await Promise.all([
-                    fetch('/api/move-in'),
-                    fetch('/api/config')
+                    fetchApi('GET', '/api/v1/move-in', '/api/move-in'),
+                    fetchApi('GET', '/api/v1/config', '/api/config')
                 ]);
                 const mv = mvRes.ok ? await mvRes.json() : null;
                 const cfg = cfgRes.ok ? await cfgRes.json() : null;
                 // version tag (same payload the office HUD uses)
-                fetch('/api/version').then(r => r.ok ? r.json() : null).then(v => {
+                fetchApi('GET', '/api/v1/version', '/api/version').then(r => r.ok ? r.json() : null).then(v => {
                     if (v) document.getElementById('dpiVersion').textContent = '· ' + v.name + ' v' + v.version;
                 }).catch(() => null);
                 if (mv && box) {
@@ -523,17 +537,13 @@
             const status = document.getElementById('moveInChecks');
             try {
                 // Carry the full current config so this POST never resets agents/rooms
-                const configRes = await fetch('/api/config');
+                const configRes = await fetchApi('GET', '/api/v1/config', '/api/config');
                 const config = await configRes.json();
                 config.startup = {
                     direction: document.getElementById('startupDirection').value.trim(),
                     goals: document.getElementById('startupGoals').value.split(',').map(g => g.trim()).filter(Boolean),
                 };
-                const res = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
+                const res = await fetchApi('POST', '/api/v1/config', '/api/config', config);
                 if (res.status === 401) {
                     status.innerHTML = '<span style="color:#f87171;">Session expired — login again</span>';
                     return;
@@ -577,13 +587,9 @@
             const status = document.getElementById('envStatus');
             try {
                 // Carry the full current config so this POST never resets agents/rooms
-                const configRes = await fetch('/api/config');
+                const configRes = await fetchApi('GET', '/api/v1/config', '/api/config');
                 const config = await configRes.json();
-                const res = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...config, environment: envId })
-                });
+                const res = await fetchApi('POST', '/api/v1/config', '/api/config', { ...config, environment: envId });
                 if (res.status === 401) {
                     status.textContent = 'Session expired — login again';
                     return;
@@ -607,9 +613,9 @@
             try {
                 // Load from server
                 const [configRes, collisionRes, roomsRes] = await Promise.all([
-                    fetch('/api/config').catch(() => null),
-                    fetch('/api/collision').catch(() => null),
-                    fetch('/api/rooms').catch(() => null)
+                    fetchApi('GET', '/api/v1/config', '/api/config').catch(() => null),
+                    fetchApi('GET', '/api/v1/collision', '/api/collision').catch(() => null),
+                    fetchApi('GET', '/api/v1/rooms', '/api/rooms').catch(() => null)
                 ]);
 
                 // 1. Characters from server
@@ -677,25 +683,13 @@
                     active: c.visible !== false
                 }));
 
-                await fetch('/api/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ agents: agentsConfig, rooms: aiRooms.map(r => ({ name: r.name, x: r.x || 0, y: r.y || 0 })) })
-                });
+                await fetchApi('POST', '/api/v1/config', '/api/config', { agents: agentsConfig, rooms: aiRooms.map(r => ({ name: r.name, x: r.x || 0, y: r.y || 0 })) });
 
                 // Save collision
-                await fetch('/api/collision', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(collisionMap)
-                });
+                await fetchApi('POST', '/api/v1/collision', '/api/collision', collisionMap);
 
                 // Save rooms
-                await fetch('/api/rooms', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(aiRooms)
-                });
+                await fetchApi('POST', '/api/v1/rooms', '/api/rooms', aiRooms);
 
                 console.log('Saved to server');
                 return true;
