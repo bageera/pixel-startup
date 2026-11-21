@@ -18,8 +18,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from pixel_startup.api import capabilities, health
 from pixel_startup.api import environment as environment_api
-from pixel_startup.api import health
 from pixel_startup.config import Settings, load_settings
 from pixel_startup.log import logger, setup_logging
 from pixel_startup.persistence.db import Database
@@ -126,6 +126,26 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
                 pass  # unreadable config keeps the default
         settings_store.set("environment", seed)
     container.providers["settings"] = settings_store
+    # G10: trusted capability executor — synthetic credential provider for
+    # qualification, honest BLOCKED Vaultwarden provider, declared adapter set.
+    from pixel_startup.capabilities.executor import DEFAULT_ADAPTERS, CapabilityExecutor
+    from pixel_startup.capabilities.providers import (
+        BlockedVaultwardenProvider,
+        SyntheticCredentialProvider,
+    )
+
+    synthetic_credentials = SyntheticCredentialProvider()
+    container.providers["synthetic_credentials"] = synthetic_credentials
+    container.providers["executor"] = CapabilityExecutor(
+        db=db,
+        audit=container.providers["audit"],
+        credential_providers={
+            "synthetic": synthetic_credentials,
+            "vaultwarden": BlockedVaultwardenProvider(),
+        },
+        adapters=dict(DEFAULT_ADAPTERS),
+        workload_tokens={settings.pixel_api_token or "": "workload.automation"},
+    )
     container.registry.register(
         ProviderRegistration(
             provider_id="pixel_startup_sqlite",
@@ -207,6 +227,12 @@ async def lifespan(app: FastAPI):
     _register_python_persistence(container, settings)
     _register_openclaw(container, settings)
     _register_hermes(container, settings)
+    # G10/G6: snapshot live provider state into provider_records (upsert-only)
+    from pixel_startup.persistence.store import sync_provider_records
+
+    snapshot_db = container.providers["db"]
+    if isinstance(snapshot_db, Database):
+        sync_provider_records(snapshot_db, container.registry)
     logger.info(
         "backend starting",
         extra={
@@ -252,6 +278,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ready = False
     app.include_router(health.router)
     app.include_router(environment_api.router)
+    app.include_router(capabilities.router)
 
     @app.exception_handler(HTTPException)
     async def _http_exc(_: Request, exc: HTTPException) -> JSONResponse:

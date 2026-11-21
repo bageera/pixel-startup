@@ -159,6 +159,55 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G10 — Secrets and capability execution (executed 2026-11-20; owner-authorized scope)
+
+**Objective:** trusted capability executor over the G9 identity proof chain; 8-step pipeline (authenticate → resolve verified binding → capability+scope validation → authorization/approval → credential via declared provider → constrained adapter → redaction → sanitized attributable audit). Synthetic-credential track only; Vaultwarden live rows stay BLOCKED.
+
+**Files:** `src/pixel_startup/capabilities/{__init__,registry,providers,executor}.py`, `api/capabilities.py` (`POST /api/v1/capabilities/execute`), `main.py` (executor wiring + `sync_provider_records` at lifespan end), `persistence/db.py` (schema v4: `executions`, `capability_approvals`), `persistence/store.py` (`EmployeeStore.revoke_binding`, `sync_provider_records`), `tests/test_capabilities.py` (15 tests).
+
+**Pipeline architecture (mandate §G10):**
+- **Declared-only capability registry** (`registry.py`): `synthetic.report` (read, no side effect), `synthetic.restricted.write` (approval-gated side effect), `vault.credential.op` (scoped credential consumed INSIDE the boundary; approval-gated). Unknown ids fail closed before any resolution — arbitrary credential lookup has no surface.
+- **Workload authentication:** token map with `secrets.compare_digest`; no default identity; empty map entry can never authenticate. API layer re-uses `require_auth` evidence: bearer → workload re-verified by the executor's token map; session cookie → pre-authenticated `workload.owner` (require_auth already proved it in-process).
+- **Identity = verified binding proof only:** `resolve_identity()` reads `runtime_bindings` (active=1) and requires the employee's `verified_binding` to carry that exact binding_id; lifecycle must be actionable (available/working/waiting/on_demand). Caller-supplied `employee_id` is corroboration: a mismatch is a spoofing attempt → denied (asserted); an UNVERIFIED binding (bind() without verify()) proves nothing (asserted).
+- **Capability + scope:** capability must be in the employee's `authorization_context` (granted by owner in G6 schema — discovery auto-grants nothing); scope must be valid for the capability AND match the employee's operational scope (`shared` covers both scopes). Cross-scope credential refusal enforced additionally at the reference level: refs are scope-namespaced (`company.*`), a `household.*` ref under a company request is denied (asserted).
+- **Approvals before side effects:** `capability_approvals` (schema v4) checked BEFORE execution; refused executions leave no completed rows (asserted zero side effects on approval failure).
+- **Replay/idempotency:** `executions.request_key` PRIMARY KEY; completed → recorded result returned with `replayed: true` (no re-execution); terminal-but-failed keys refused; new keys execute normally (asserted).
+- **Credential resolution with NO fallback:** only the capability's DECLARED provider id is consulted — a failing provider is terminal ("provider failed; operation refused"); an undeclared-but-mapped provider is never consulted (call-count asserted 1 and 0); `BlockedVaultwardenProvider` raises the honest BLOCKED condition and can never fabricate a value.
+- **Redaction:** result deep-scan replaces any string containing a credential value + redacts secret-named keys (`[REDACTED]`); proven with a deliberately leaky adapter — value absent from HTTP result, `executions.result` row and ALL audit payloads; audit detail carries only redaction counts.
+- **Prompt-injection inertness:** payload content is untyped data to the pipeline — authorization fields come from registry lookups and store rows only; an injection attempting to grant capabilities/escalate scope/claim another employee changes nothing (asserted denied), while legitimate grants execute with the payload carried verbatim (asserted).
+- **Fail closed everywhere:** authentication failure, unknown capability, missing grant, bad scope, unapproved, unverified/revoked binding, provider failure, adapter absence, malformed requests — all raise `CapabilityDenied` → HTTP 403 with a single generic message ("capability execution denied"); nothing sensitive is echoed; every denial audited with attribution to the RESOLVED employee id.
+
+**Revocation paths (both mandated):** `EmployeeStore.revoke_binding` deactivates the lease AND withdraws `verified_binding` → executor refuses the binding afterwards (asserted); credential revocation (seed → revoke → execute) fails at the provider step with no fallback (asserted).
+
+**G6 leftover closed:** `sync_provider_records` snapshots the live registry into `provider_records` at the end of every lifespan (upsert-only; no other data touched) — verified across restart (4 rows, states preserved; roster row count intact).
+
+**Schema migrations:** v4 = `executions(request_key PK → replay protection, employee FK, capability, scope, status, result, workload, timestamps)` + `capability_approvals` + employee index. Versioned; upgrade-in-place verified (`migrate() == 4`, idempotent).
+
+**Acceptance evidence — actual results:** `uv run pytest` → **70 passed** (15 G10: positive+attribution, auth fail-closed ×2, caller-ID spoof/unverified-binding, binding+credential revocation, escalation, scope isolation incl. cross-scope ref, approval-before-side-effect, replay/idempotency/terminal-refusal, secret-redaction across result+executions+audit with a leaky adapter, no-fallback ×2, honest BLOCKED provider, prompt-injection ×2, malformed+retired-lifecycle, provider-records restart recovery, API 401/403/200+replay); ruff clean; pyright 0 errors; `npm test` 56/56 (regression); `make build` image green.
+
+**Verdicts (recorded separately as required):**
+- **Synthetic executor qualification: PASS** (component level; positive/negative/adversarial suites green; no live dependency exercised).
+- **Vaultwarden live integration qualification: BLOCKED** — endpoint reachable (see below) but auth is NOT configured on this host (no client credentials per C0.7); the `BlockedVaultwardenProvider` ensures no code path can proceed to a live vault until the integration is qualified.
+- **Deployment readiness: NOT RUN** — the executor is component-qualified inside the Python backend; the deployed image still runs the JS baseline (`node server.js`) until G20, and no live Vaultwarden connectivity-with-auth exists. No deployment claim is made.
+
+**Security findings:**
+1. **Vaultwarden endpoint reachable:** `https://bw.theblacktech.com/alive` → HTTP 200, 27 ms (root also 200; DNS 108.189.128.9). Reachability is NOT qualification: auth remains the blocker (client credentials absent from this host), and the executor treats vault access as unavailable until G10-live rows are executed with owner-provisioned credentials.
+2. **No-fallback semantics are load-bearing:** the executor's no-fallback guarantee is what prevents a compromised/failing provider from bypassing an authorization evaluated against a different provider. Tests pin the provider call counts.
+3. **Redaction is value-based plus key-based:** exact-credential-value replacement + secret-key sanitization; the leaky-adapter test proves defense against adapter-level disclosure, the realistic failure mode.
+4. **Session-cookie workload mapping is provisional:** `workload.owner` is derived from `require_auth("session")`; per-user workload identity differentiation (beyond owner) belongs to G13/G16-era identity work, not this gate.
+5. **The prompt-injection control is structural (payload is inert data):** any future feature that lets agent-authored text influence `capability`/`scope`/`binding_id` resolution would void this test — flagged as a standing review item.
+
+**Parallel independent work (authorization item 2):**
+- **ChromaDB / Memory Palace:** NO endpoint is configured anywhere in the repo (`.env` names scanned for CHROMA/MINIO/S3/MEMORY/RUSTFS — names only, no values printed; integration-inventory already marks the integration "not integrated"). **Nothing to probe without an owner-provided endpoint** — recorded as the blocker, not guessed.
+- **MinIO / S3:** same result — no configured endpoint name → no probe performed; discovering hypothetical hosts would be exactly the forbidden discovery behavior, so it was not attempted.
+- **Vaultwarden probe** (above) used the one endpoint configured in the repo.
+- **G13/G15/G16 continuation:** not started this gate — G10 saturated the session budget; **G16 (registry→display wiring of lifecycle/verified status) is the recommended next credential-free increment**. Hermes task-submission support remains explicitly `supported: false` (no fabrication).
+
+**Test commands:** `make python-test` (pytest+ruff+pyright), `npm test`, `make build`; reproduction chain above.
+**Rollback implications:** schema v4 tables are additive (drop `executions`/`capability_approvals` to revert); removing `capabilities/` + the API route + the lifespan sync returns to the G9/G22 state; JS stack and all prior gate behavior untouched (npm suite green).
+
+**Verdict: PASS** (synthetic executor qualification; live Vaultwarden rows and deployment readiness remain separately BLOCKED/NOT RUN as recorded above).
+
 ### G22 — Isometric environments and sprite system (criteria registered 2026-11-20; execution follows)
 
 **Criteria (registered pre-execution):**

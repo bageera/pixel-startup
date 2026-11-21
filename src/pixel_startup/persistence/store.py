@@ -164,6 +164,22 @@ class EmployeeStore:
             raise
         return {"binding_id": binding_id, **(self.get(employee_id) or {})}
 
+    def revoke_binding(self, employee_id: str, binding_id: str) -> dict:
+        """Runtime-binding revocation: lease deactivated + verification withdrawn.
+
+        Identity proof dies here: the executor refuses any revoked binding."""
+        cur = self.db.conn.execute(
+            "UPDATE runtime_bindings SET active = 0"
+            " WHERE binding_id = ? AND employee_id = ? AND active = 1",
+            (binding_id, employee_id),
+        )
+        if cur.rowcount != 1:
+            raise StorageError(f"unknown or already-revoked binding: {binding_id}")
+        row = self.get(employee_id)
+        if row is None:
+            raise StorageError(f"unknown employee: {employee_id}")
+        return self._write(employee_id, {"verified_binding": None}, row["lifecycle"])
+
     def verify_binding(self, employee_id: str, binding_id: str) -> dict:
         """Grant verified_binding only for an existing, active binding row."""
         row = self.db.conn.execute(
@@ -360,6 +376,37 @@ class OfficePersistenceProvider:
                 counts[table] = int(row["n"])
             return {"counts": counts}
         raise StorageError(f"unsupported operation: {operation}")
+
+
+def sync_provider_records(db: Database, registry) -> int:
+    """G6 leftover closed (G10): snapshot live provider registry state into
+    provider_records. Upsert-only — existing configuration rows are updated to
+    the registry's CURRENT state; no other tables are touched."""
+    upserted = 0
+    for reg in registry.all():
+        db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            db.conn.execute(
+                "INSERT OR REPLACE INTO provider_records (provider_id, category,"
+                " implementation, state, endpoint, capabilities, priority, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    reg.provider_id,
+                    reg.category.value,
+                    reg.implementation,
+                    reg.state.value,
+                    reg.endpoint,
+                    json.dumps(list(reg.capabilities)),
+                    reg.priority,
+                    _now(),
+                ),
+            )
+            db.conn.execute("COMMIT")
+        except Exception:
+            db.conn.execute("ROLLBACK")
+            raise
+        upserted += 1
+    return upserted
 
 
 def migrate_office_json(db: Database, agents_json_path: str) -> dict:

@@ -105,6 +105,31 @@ MIGRATIONS: dict[int, list[str]] = {
             updated_at TEXT NOT NULL
         )""",
     ],
+    4: [
+        # G10: capability execution ledger (replay protection via UNIQUE request_key)
+        """CREATE TABLE IF NOT EXISTS executions (
+            request_key TEXT PRIMARY KEY,
+            employee_id TEXT NOT NULL REFERENCES employees(employee_id),
+            capability TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            status TEXT NOT NULL,
+            result TEXT NOT NULL DEFAULT '{}',
+            workload TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_executions_employee ON executions(employee_id)",
+        # G10: capability-level approvals (task approvals stay for G14 delegation)
+        """CREATE TABLE IF NOT EXISTS capability_approvals (
+            approval_id TEXT PRIMARY KEY,
+            capability TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            decided_by TEXT,
+            created_at TEXT NOT NULL
+        )""",
+    ],
 }
 
 EMPLOYEE_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
