@@ -28,27 +28,29 @@ push-image: ## Push the locally built backend image to GHCR (pull side is public
 pull: ## Pull the CI-published backend image (public package, no docker login)
 	docker pull $(BACKEND_IMAGE):latest
 
-start: ## Start the stack: pull latest backend + run (office on $(PORT)), Hermes presence mounts
+start: ## Local dev: build (cached) from source + run (office on $(PORT)), Hermes presence mounts
 ifeq ($(ENVFILE),)
 	@echo "no .env found: DASHBOARD_PASSWORD/PIXEL_SESSION_SECRET/PIXEL_API_TOKEN must come from the environment"
 endif
 	@grep -q "^DASHBOARD_PASSWORD=" .env 2>/dev/null || echo "note: without DASHBOARD_PASSWORD the backend refuses to boot"
-	docker pull $(BACKEND_IMAGE):latest
+	docker build -q -f Dockerfile.python -t $(IMAGE):latest .
 	-docker stop $(IMAGE)
 	-docker rm $(IMAGE)
 	docker run -d --name $(IMAGE) \
+	  --user "$(shell id -u):$(shell id -g)" \
 	  -p $(PORT):19000 \
 	  --pid=host \
 	  $(if $(ENVFILE),--env-file .env) \
 	  -v $(CURDIR)/data:/app/data \
 	  -v $(HERMES_HOME):/hermes-home:ro -e HERMES_HOME=/hermes-home \
-	  $(BACKEND_IMAGE):latest
+	  -e PIXEL_HERMES_LIVENESS=file \
+	  $(IMAGE):latest
 
 stop: ## Stop and remove the running stack
 	-docker stop $(IMAGE)
 	-docker rm $(IMAGE)
 
-restart: ## stop + start (pulls latest)
+restart: ## stop + start (rebuilds from current source, cached)
 	$(MAKE) stop
 	$(MAKE) start
 

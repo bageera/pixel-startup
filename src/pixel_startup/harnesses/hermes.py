@@ -37,9 +37,17 @@ class HermesHomeAdapter:
     category = "agent_harness"
     implementation = "python"
 
-    def __init__(self, hermes_home: str | None = None, liveness_fn=None) -> None:
+    def __init__(
+        self, hermes_home: str | None = None, liveness_fn=None, liveness_mode: str = "pid"
+    ) -> None:
         self.home = Path(hermes_home or os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
-        self._alive = liveness_fn or _pid_alive
+        # Docker Desktop's Linux VM cannot see macOS pids - pid liveness there is
+        # noise (random pid collisions). mode "file" trusts the lease/gateway
+        # state files as evidence (hermes writes them live while it runs).
+        if liveness_mode == "file":
+            self._alive = liveness_fn or (lambda pid: True)
+        else:
+            self._alive = liveness_fn or _pid_alive
 
     def _read_json(self, relpath: str):
         path = self.home / relpath

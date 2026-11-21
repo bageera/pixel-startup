@@ -376,7 +376,10 @@ def _register_hermes(container: Container, settings: Settings) -> None:
     offline here, the provider stays CANDIDATE — no qualification without evidence."""
     from pixel_startup.harnesses.hermes import HermesHomeAdapter
 
-    adapter = HermesHomeAdapter(hermes_home=settings.hermes_home)
+    adapter = HermesHomeAdapter(
+        hermes_home=settings.hermes_home,
+        liveness_mode="file" if os.environ.get("PIXEL_HERMES_LIVENESS") == "file" else "pid",
+    )
     container.registry.register(
         ProviderRegistration(
             provider_id=adapter.provider_id,
