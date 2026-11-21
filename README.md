@@ -75,6 +75,18 @@ A pixel office operated by a **Python backend** (FastAPI: office state, delegati
    # Office: http://localhost:19000/ — Dashboard: /dashboard.html
    ```
 
+**Docker (local dev — stop / rebuild / start loop):**
+
+```bash
+make start    # build the python image from source (cached), run on :19000
+              # mounts ./data + ~/.hermes (read-only; HERMES_HOME), .env secrets
+make stop     # stop + remove the container
+make restart  # stop → rebuild → start
+make pull     # run-side: pull the CI-published image instead of building
+```
+
+Hides the office HUD chrome with the `◱ HUD` toggle (persists locally). The docker run is the same shape for deploy hosts: add `-v ~/.hermes:/hermes-home:ro -e HERMES_HOME=/hermes-home -e PIXEL_HERMES_LIVENESS=file` when Hermes runs beside the container (Docker Desktop VMs cannot see host pids, so the lease files are the liveness evidence there).
+
 ## 🧑‍💼 Onboarding the startup (deploy to your cluster)
 
 The rails exist; each integration flips live from `deploy/pixel-stack.yaml`'s `pixel-secrets` — offline stays honest if a key is absent.
@@ -95,6 +107,9 @@ Scoped ChromaDB memory (G11) and MinIO objects (G12) go live; without them the o
 On the host running Hermes: `hermes gateway setup` (A2A_PORT + peer token), then verify the office pod binds the harness. This flips delegation dispatch on — the plan → owner-review → verify pipeline (Mattermost is the notification surface; the approvals-row record is the only authorization).
 
 **5. Later — OpenClaw (`OPENCLAW_GATEWAY_URL`/`TOKEN`) + Vaultwarden creds.** Presence chips and binding polish; not required to operate.
+
+**6. Register a harness employee (the org side of onboarding).**
+With the admin token: `POST /api/v1/office/onboard` — `{"employee_id", "display_name", "harness": "hermes", "native_agent_id", "harness_instance_id"}` → registers, binds + verifies the native identity (native-identity uniqueness is the impersonation guard), activates the lifecycle, returns the observed presence row. Re-onboarding refreshes a binding; a different employee claiming the same native identity is refused. `GET /api/v1/health/services` and the dashboard strip (Email / Communication / Memory & Storage buckets) confirm which integrations are connected — evidence only, never assumed.
 
 ## 🕹️ REST API (backend highlights)
 
