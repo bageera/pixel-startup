@@ -159,6 +159,26 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G16 — Frontend compatibility and live activity (criteria 2026-11-20, executed same session)
+
+**Criteria (registered pre-execution):**
+- C16.1 One sanitized read model (`GET /api/v1/office/state`): employees (lifecycle, binding-verified as BOOLEAN ONLY — no grants/binding internals), provider health (states — no endpoints/secrets), observed harness status vs registry state (explicitly distinguished), task progress, pending approvals, sanitized activity history.
+- C16.2 Status driven by verified polling (mandate allows polling); response carries `generated_at`; no invented activity — sprites keep behaving exactly as the existing simulation does, and backend absence degrades silently.
+- C16.3 Frontend consumes it in the EXISTING `#runtimeChips` overlay (no layout/identity change); stale data detected client-side (>30 s → STALE marker); polling failure keeps the office fully functional.
+- C16.4 Existing frontend compatibility preserved: no JS API route removed or reshaped; npm regression suite stays green.
+- C16.5 Charon→OpenClaw and Hermes status rows display the honest adapter verdict (candidate/BLOCKED vs live-qualified) — observed and registry states never merged.
+
+**Implementation:** `api/office_state.py` (single handler, public read, sanitized), `main.py` router include, `index.html` polling strip, `tests/test_office_state.py`.
+
+**Execution evidence (2026-11-20/21):**
+- Read model verified live on this host: `GET /api/v1/office/state` → employees (id/name/sprite/kind/lifecycle/harness + `binding_verified: bool` ONLY — grants, verified_binding internals, asserted_id and provider endpoints stripped, asserted), tasks (counts + active, objective text stays internal — asserted), approvals (pending), providers (state only), sanitized activity (audit rows are G10-sanitized by construction), `generated_at` for stale detection.
+- **Observed vs registry never merged (C16.5):** live smoke — `hermes_home` → `source: "observed-poll"`, `observed.online: true`, mattermost connected, 2 live sessions (real Hermes state on this host); `openclaw_gateway` → `source: "registry"`, `observed: null`, registry_state `candidate` (no gateway exists — honest, no invented activity).
+- Frontend (C16.3): `#officeStatusChips` in the existing `#ui` overlay; 15 s verified polling; client-side STALE marker at >30 s; backend-unreachable → chip only if the backend was previously reachable, otherwise the office renders exactly as before (no invented activity, sprite simulation untouched).
+- Compatibility (C16.4): zero JS routes removed/reshaped; `npm test` 56/56; python `uv run pytest` → **73 passed** (3 G16: shape+sanitization+provenance, counts-from-stores, public-read).
+- Reconnect handling: stateless polling (no sockets, no session corruption — reconnection re-fetches a fresh snapshot).
+**Limitations:** Charon→OpenClaw live runtime mapping remains BLOCKED (no gateway — displays the honest registry verdict `candidate`); no websocket push (polling per mandate); task objective text deliberately not exposed until a UI needs it.
+**Verdict: PASS** (component + this-host live read model; frontend regression green).
+
 ### G10 — Secrets and capability execution (executed 2026-11-20; owner-authorized scope)
 
 **Objective:** trusted capability executor over the G9 identity proof chain; 8-step pipeline (authenticate → resolve verified binding → capability+scope validation → authorization/approval → credential via declared provider → constrained adapter → redaction → sanitized attributable audit). Synthetic-credential track only; Vaultwarden live rows stay BLOCKED.

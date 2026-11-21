@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from pixel_startup.api import capabilities, health
+from pixel_startup.api import capabilities, health, office_state
 from pixel_startup.api import environment as environment_api
 from pixel_startup.config import Settings, load_settings
 from pixel_startup.log import logger, setup_logging
@@ -279,6 +279,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(environment_api.router)
     app.include_router(capabilities.router)
+    app.include_router(office_state.router)
 
     @app.exception_handler(HTTPException)
     async def _http_exc(_: Request, exc: HTTPException) -> JSONResponse:

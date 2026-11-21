@@ -86,7 +86,8 @@
                 channels: 'channels',
                 model: 'model', models: 'models',
                 ownerLogin: 'Owner login',
-                loginNeeded: 'Owner login required — use the 🔒 lock above.'
+                loginNeeded: 'Owner login required — use the 🔒 lock above.',
+                officeStatus: 'office status', live: 'live', bindingVerified: 'runtime binding verified'
             },
             es: {
                 aiDirector: 'Director IA', log: 'Registro', dashboard: 'Panel', email: 'Correo', contacts: 'Contactos',
@@ -115,7 +116,8 @@
                 channels: 'canales',
                 model: 'modelo', models: 'modelos',
                 ownerLogin: 'Acceso propietario',
-                loginNeeded: 'Se requiere acceso de propietario — usa el candado 🔒 arriba.'
+                loginNeeded: 'Se requiere acceso de propietario — usa el candado 🔒 arriba.',
+                officeStatus: 'estado de la oficina', live: 'en vivo', bindingVerified: 'enlace de ejecución verificado'
             }
         };
         let LANG = localStorage.getItem('pixel_lang') ||
@@ -150,6 +152,7 @@
         <div id="ui">
             <div><span data-i18n="time">Time:</span> <span id="timer">0</span>s</div>
             <div id="runtimeChips" style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:11px;"></div>
+            <div id="officeStatusChips" style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:11px;"></div>
             <div id="langToggle" style="margin-top:6px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="setLang(LANG==='en'?'es':'en')" title="Language / Idioma">🌐 <span id="langLabel">EN</span></div>
             <div id="ownerLoginBtn" style="margin-top:2px;font-size:11px;color:#9ca3af;cursor:pointer;pointer-events:auto;" onclick="ownerLogin()" title="Owner login (AI Director + briefings)">🔒 <span data-i18n="ownerLogin">Owner login</span></div>
         </div>
@@ -2322,6 +2325,48 @@ Write NOTHING MORE than raw JSON, without code block markdown.`;
         }
         pollRuntimePresence();
         setInterval(pollRuntimePresence, 15000);
+
+        // === G16: live employee/provider status (Python backend, verified polling) ===
+        // Observed vs registry provenance preserved; stale state detected client-side;
+        // no invented activity — chips only show what the backend actually reported.
+        let officeStateReachable = false;
+        async function pollOfficeStatus() {
+            try {
+                const res = await fetch('/api/v1/office/state');
+                if (!res.ok) throw new Error('state http ' + res.status);
+                const s = await res.json();
+                officeStateReachable = true;
+                const box = document.getElementById('officeStatusChips');
+                if (!box) return;
+                const stale = (Date.now() - Date.parse(s.generated_at)) > 30000;
+                const lcColor = { available: '#4ade80', working: '#60a5fa', on_demand: '#fbbf24' };
+                const rows = (s.employees || []).map(e => {
+                    const color = lcColor[e.lifecycle] || (e.lifecycle === 'retired' ? '#6b7280' : '#9ca3af');
+                    const check = e.binding_verified ? ' <span style="color:#4ade80;" title="' + t('bindingVerified') + '">✓</span>' : '';
+                    return `<span style="color:#9ca3af;">` +
+                        `<span style="color:${color};">●</span> ${e.display_name} · ${e.lifecycle}${check}</span>`;
+                }).join('');
+                const obsRows = (s.observations || []).map(o => {
+                    const dot = o.observed && o.observed.online ? '#4ade80' : '#6b7280';
+                    const verdict = o.source === 'observed-poll' && o.observed
+                        ? `${o.observed.online ? t('live') : t('offline')}`
+                        : o.registry_state;  // registry-only verdict, honestly labeled
+                    return `<span style="color:#9ca3af;" title="[${o.source}] ${o.provider_id}">` +
+                        `<span style="color:${dot};">●</span> ${o.provider_id}: ${verdict}</span>`;
+                }).join('');
+                const staleTag = stale ? `<span style="color:#f87171;">STALE</span> ` : '';
+                box.innerHTML = `<span style="color:#475569;font-size:10px;">${staleTag}${t('officeStatus')}</span>` + rows + obsRows;
+            } catch (e) {
+                if (officeStateReachable) {
+                    const box = document.getElementById('officeStatusChips');
+                    if (box) box.innerHTML = `<span style="color:#9ca3af;">● status unavailable (backend unreachable)</span>`;
+                    officeStateReachable = false;
+                }
+                // never shown if the backend was never reachable: office stays as before
+            }
+        }
+        pollOfficeStatus();
+        setInterval(pollOfficeStatus, 15000);
 
         // Apply saved/browser language to all data-i18n elements once the DOM is parsed
         applyI18n();
