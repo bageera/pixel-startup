@@ -177,3 +177,29 @@ def test_chat_unconfigured_is_blocked_not_fabricated() -> None:
     unconfigured = LiteLLMProvider(None, None)
     with pytest.raises(InfraUnavailable, match="BLOCKED"):
         unconfigured.invoke("chat.completions", {"messages": [{"role": "user", "content": "x"}]})
+
+
+def test_litellm_probe_liveliness(monkeypatch):
+    """Boot promotion evidence: /health/liveliness 200 -> probe online; failure
+    stays honest (InfraUnavailable). Body is plain text, never parsed."""
+    from pixel_startup.integrations import infra
+
+    calls = []
+
+    def fake_get(url, token, path):
+        calls.append((url, path))
+        return 200, "I'm alive!"
+
+    monkeypatch.setattr(infra, "_make_get_client", lambda: fake_get)
+    infra._GET_CLIENT = None
+
+    live = infra.LiteLLMProvider("http://llm.test", None, model="m")
+    assert live.probe() == {"online": True}
+    assert calls == [("http://llm.test", "/health/liveliness")]
+
+    def dead_get(url, token, path):
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(infra, "_make_get_client", lambda: dead_get)
+    with pytest.raises(InfraUnavailable, match="unreachable"):
+        infra.LiteLLMProvider("http://llm.test", None).probe()

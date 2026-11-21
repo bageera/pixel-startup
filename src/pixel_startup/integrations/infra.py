@@ -132,6 +132,32 @@ def _make_post_client():
 _POST_CLIENT = None
 
 
+def _make_get_client():
+    """Live GET transport (probe evidence). Tests monkeypatch this factory."""
+    global _GET_CLIENT
+    if _GET_CLIENT is None:
+        import httpx
+
+        def _get(url: str, token: str | None, path: str) -> tuple[int, str]:
+            try:
+                resp = httpx.get(
+                    f"{url.rstrip('/')}{path}",
+                    headers={"Authorization": f"Bearer {token}"} if token else None,
+                    timeout=4.0,
+                )
+                return resp.status_code, resp.text
+            except httpx.TimeoutException as exc:
+                raise TimeoutError(str(exc)) from exc
+            except httpx.HTTPError as exc:
+                raise ConnectionError(str(exc)) from exc
+
+        _GET_CLIENT = _get
+    return _GET_CLIENT
+
+
+_GET_CLIENT = None
+
+
 class LiteLLMProvider(_Base):
     """G16/G23: model invocation for office chat + the Chief of Staff perspective.
     chat.completions is a declared write-ish op (invokes an external model, mutates
@@ -144,6 +170,21 @@ class LiteLLMProvider(_Base):
     def __init__(self, base_url, token, client=None, model: str | None = None):
         super().__init__(base_url, token, client=client)
         self._model = model
+
+    def probe(self) -> dict:
+        # cheap reachability evidence: the litellm proxy answers /health/liveliness
+        # without auth. Proves the service is up (row promotes on it); model AUTH
+        # still needs LITELLM_API_KEY for chat.completions — separate concern.
+        if not self.configured:
+            raise InfraUnavailable(f"{self.provider_id} not configured; live rows BLOCKED")
+        get = _GET_CLIENT or _make_get_client()
+        try:
+            status, _body = get(self._url, self._token, "/health/liveliness")
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            raise InfraUnavailable(f"{self.provider_id} unreachable") from exc
+        if status != 200:  # body is plain text ("I'm alive!"), never parsed
+            raise InfraUnavailable(f"{self.provider_id} probe status {status}")
+        return {"online": True}
 
     def invoke(self, operation: str, payload: dict) -> dict:
         if not self.configured:

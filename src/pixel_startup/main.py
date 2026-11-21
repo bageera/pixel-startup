@@ -13,6 +13,7 @@ import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -365,6 +366,14 @@ def _register_infra(container: Container, settings: Settings) -> None:
                 )
             )
             container.registry.transition(adapter.provider_id, ProviderState.CANDIDATE)
+            probe_fn = getattr(adapter, "probe", None)  # G18 evidence-gated promotion
+            if callable(probe_fn):
+                try:
+                    probe = cast("dict", probe_fn())
+                    if probe.get("online"):
+                        container.registry.transition(adapter.provider_id, ProviderState.QUALIFIED)
+                except Exception:  # noqa: BLE001 - probe failure stays candidate, honest
+                    pass
         except ProviderError:
             pass  # already registered in this container (idempotent boot)
 
