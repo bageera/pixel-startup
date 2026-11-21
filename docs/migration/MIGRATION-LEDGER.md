@@ -159,6 +159,34 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G18 — Performance and reliability (measured 2026-11-21, host: macOS/arm, this repo checkout)
+
+Method: `tools/perf_benchmark.py` — both backends on isolated ports/data dirs, 50-sample latencies, 10-thread concurrency, per-worker SQLite connections for contention (no shared-handle fudge). Full JSON: run the script; figures below are the actual output.
+
+| Measurement | JavaScript baseline | Python (1 emp) | Python (5) | Python (10) | Python (25) |
+|---|---|---|---|---|---|
+| Cold start (→ first 200) | 0.66 s | 0.29 s | 0.34 s | 0.34 s | 0.33 s |
+| Warm probe p50 / p95 (ms) | 0.53 / 1.65 | 0.44 / 0.67 | 0.34 / 0.63 | 0.32 / 0.55 | 0.49 / 1.30 |
+| Office state p50 / p95 (ms) | — (JS has no equivalent) | 0.67 / 1.36 | 0.49 / 0.77 | 0.61 / 0.89 | 0.69 / 1.06 |
+| 10 parallel worst (ms) | 6.69 | 4.82 | 2.76 | 3.22 | 4.53 |
+| Idle RSS (KB) | 73,680 | 59,184 | 58,880 | 59,392 | 58,944 |
+
+SQLite (Python store): 500 sequential task inserts **90.1 ms** (~5.5 k/s); 800 inserts across 8 concurrent connections **121.5 ms** (~6.6 k/s, 8/8 workers OK) — WAL + `BEGIN IMMEDIATE` handles contention without data loss.
+
+Failure injection: all external providers unconfigured → office state still serves 200 with `observed: null` honest rows (1 harness row reported unavailable, no fabricated online states); browser reconnect is stateless polling (no session corruption); restart recovery covered by G6/G10/G14 suites (provider rows + tasks + executions persist).
+
+Container footprint: deployed image 332 MB (combined node+python, current stack). MVP resource budget implied by measurements: **≤ 128 MB RSS per Python backend process**, ~30 MB for a 25-employee office state workload spike; CPU near-idle at measured request rates.
+
+**Deployment-blocking regressions: none.** No optimization performed beyond this gate (none warranted by evidence).
+**Verdict: PASS** (measured workloads only).
+
+### G15 — Existing infrastructure integrations (executed 2026-11-21)
+
+**Files:** `integrations/infra.py` (Odoo, Home Assistant, Rundeck, Grafana, GitHub, FreshRSS, LiteLLM, Calendar — one normalized read-only pattern), `config.py` (endpoint/token fields), `main.py` (`_register_infra`, registry rows 8×candidate), `tests/test_integration_infra.py` (5).
+**Implementation:** declared capabilities are the ONLY dispatch surface (`invoke` refuses undeclared ops — write ops deliberately absent); injected transport for synthetics; typed normalization (401/403→InfraFailure, 5xx/unreachable/malformed→InfraUnavailable); unconfigured → BLOCKED, never fabricated.
+**Results:** 5/5 synthetic (read-only op normalized, undeclared write refused, unconfigured BLOCKED, auth/5xx normalization, unreachable; boot sync → 16 provider_records rows; office read-model strips endpoints).
+**Live rows: BLOCKED** — none of the 8 endpoints is configured on this host. **Verdict: PASS-SYNTHETIC.**
+
 ### G17 — Security qualification (executed 2026-11-21)
 
 **Evidence:** `tests/test_security_matrix.py` (4: unauth route matrix + no-echo, cookie expiry/tamper, runtime leak-scan of office/state rows, staleness contract) on top of the G10/G14/G22 adversarial suites. **Report: `docs/security-qualification.md`** (19-row dispositions table).
