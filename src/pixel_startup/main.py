@@ -172,6 +172,11 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
     container.providers["delegation_flow"] = make_plan_flow(  # G23-3a
         db, container.registry, container.providers["audit"]
     )
+    from pixel_startup.capabilities.federation import make_federation_ingest
+
+    container.providers["federation_ingest"] = make_federation_ingest(  # G23 federation
+        db, container.registry, container.providers["audit"]
+    )
     _register_comms(container, settings)
     _register_infra(container, settings)
     container.registry.register(

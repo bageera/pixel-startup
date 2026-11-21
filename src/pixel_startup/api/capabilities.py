@@ -8,6 +8,7 @@ the request body. Denials map to a generic 403 — nothing sensitive is echoed.
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from pixel_startup.capabilities import federation
 from pixel_startup.capabilities.delegation import DelegationFailure
 from pixel_startup.capabilities.executor import CapabilityExecutor
 from pixel_startup.capabilities.registry import CapabilityDenied
@@ -92,6 +93,26 @@ async def delegation_result(
         return retriever(task_id)
     except DelegationFailure as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
+
+
+@router.post("/api/v1/federation/events")
+async def federation_events(request: Request, auth_method: str = Depends(require_auth)):
+    """Harness → organization: sanitized event (id, capability, summary).
+
+    Idempotent by event id — retries replay, never re-dispatch."""
+    _ = auth_method
+    body = await request.json()
+    ingest = request.app.state.container.providers["federation_ingest"]
+    try:
+        return ingest(body if isinstance(body, dict) else {})
+    except DelegationFailure as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.get("/api/v1/federation/manifest")
+async def federation_manifest(_auth_method: str = Depends(require_auth)) -> dict:
+    """Published capability manifest: one capability, one execution authority."""
+    return {"manifest": federation.MANIFEST}
 
 
 @router.post("/api/v1/capabilities/execute")
