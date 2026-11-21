@@ -1,13 +1,13 @@
-# Pixel Startup — build & run (visual environment: Pixel Office)
+# Pixel Startup — build, pull & run (python backend fronts the office; node behind it)
 IMAGE   := pixel-startup
-# Legacy image tag `pixel-office` may still exist locally from earlier builds; it is
-# untouched (re-tag or `make clean` to retire it after Python cutover).
+BACKEND_IMAGE := ghcr.io/bageera/pixel-startup-backend
 PORT    ?= 19000
+HERMES_HOME ?= $(HOME)/.hermes
 ENVFILE := $(wildcard .env)
 VERSION := $(shell node -p "require('./package.json').version")
 
 .DEFAULT_GOAL := help
-.PHONY: help install test build push-image run stop logs clean tag contracts python-setup python-test
+.PHONY: help install test build push-image pull start stop restart run logs clean tag contracts python-setup python-test
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-10s %s\n", $$1, $$2}'
@@ -18,25 +18,45 @@ install: ## Install npm dependencies
 test: ## Run integration/presence self-checks
 	npm test
 
-build: ## Build the Docker image
-	docker build -t $(IMAGE):latest .
+build: ## Build the local backend image (python tier; CI publishes GHCR on push)
+	docker build -f Dockerfile.python -t $(IMAGE):latest -t $(BACKEND_IMAGE):local .
 
-push-image: ## Push the built image to GHCR (build hosts pull ghcr.io/bageera/pixel-startup:latest; pull side needs docker login ghcr.io)
-	docker tag $(IMAGE):latest ghcr.io/bageera/$(IMAGE):latest
-	docker push ghcr.io/bageera/$(IMAGE):latest
+push-image: ## Push the locally built backend image to GHCR (pull side is public, no login)
+	docker tag $(IMAGE):latest $(BACKEND_IMAGE):latest
+	docker push $(BACKEND_IMAGE):latest
 
-run: ## Run the container (PORT from host side, data/ mounted, .env if present)
-	docker run -d --rm --name $(IMAGE) \
+pull: ## Pull the CI-published backend image (public package, no docker login)
+	docker pull $(BACKEND_IMAGE):latest
+
+start: ## Start the stack: pull latest backend + run (office on $(PORT)), Hermes presence mounts
+ifeq ($(ENVFILE),)
+	@echo "no .env found: DASHBOARD_PASSWORD/PIXEL_SESSION_SECRET/PIXEL_API_TOKEN must come from the environment"
+endif
+	@grep -q "^DASHBOARD_PASSWORD=" .env 2>/dev/null || echo "note: without DASHBOARD_PASSWORD the backend refuses to boot"
+	docker pull $(BACKEND_IMAGE):latest
+	-docker stop $(IMAGE)
+	-docker rm $(IMAGE)
+	docker run -d --name $(IMAGE) \
 	  -p $(PORT):19000 \
+	  --pid=host \
 	  $(if $(ENVFILE),--env-file .env) \
 	  -v $(CURDIR)/data:/app/data \
-	  $(IMAGE):latest
+	  -v $(HERMES_HOME):/hermes-home:ro -e HERMES_HOME=/hermes-home \
+	  $(BACKEND_IMAGE):latest
 
-stop: ## Stop the container
+stop: ## Stop and remove the running stack
 	-docker stop $(IMAGE)
+	-docker rm $(IMAGE)
 
-logs: ## Tail container logs
+restart: ## stop + start (pulls latest)
+	$(MAKE) stop
+	$(MAKE) start
+
+logs: ## Tail stack logs
 	docker logs -f $(IMAGE)
+
+run: ## Back-compat alias for start
+	$(MAKE) start
 
 tag: ## Tag the current commit as annotated v$(VERSION) (SemVer, from package.json) and push the tag
 	git tag -a v$(VERSION) -m "v$(VERSION)"
