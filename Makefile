@@ -49,11 +49,12 @@ contracts: ## Validate G3 language-neutral contracts (node + python), fixture pa
 python-setup: ## Sync the Python backend environment (uv; creates .venv + uv.lock)
 	uv sync
 
-python-test: ## Python backend gate: pytest, ruff lint + format, pyright (G4)
+python-test: ## Python backend gate: pytest, ruff lint + format, pyright, pip-audit
 	uv run pytest
 	uv run ruff check src tests
 	uv run ruff format --check src tests
 	uv run pyright src tests
+	uv run pip-audit
 
 clean: ## Stop the container and remove the image
 	-docker stop $(IMAGE)

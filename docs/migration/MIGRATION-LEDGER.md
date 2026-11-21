@@ -218,7 +218,7 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 - **B4 Memory/storage** — ChromaDB + MinIO endpoints (+ WireGuard routing). Unblocks G11/G12-live.
 - **B5 Hermes submission** — **enable the already-installed A2A platform** (A2A_PORT + peer token via `hermes gateway setup`), then wire-office binding verification. Unblocks G14-live, MVP-04/05.
 - **G17-F1** — rotate the historical credential in `075e1f1` (+ optional history purge, needs separate rewrite authorization).
-- **G17-G1** — install `pip-audit` for the Python dependency scan (JS clean).
+- **G17-G1 — CLOSED 2026-11-21:** pip-audit installed as dev dependency (`uv add --dev pip-audit`); `uv run pip-audit` → **No known vulnerabilities found** (single benign skip: the project itself — not on PyPI — not auditable); wired into `make python-test` so every gate runs it. JS side stays `npm audit` 0.
 - Each blocker has a safe resolution path, requires owner-controlled secrets/endpoints delivered OUTSIDE chat (approved secret mechanism), and ALL independent work continued regardless.
 
 **Final commit inventory (local, unpushed this gauntlet):** `7c273c9` G11 · `8b63444` G12 · `876534a` G13+G14 · `125a0b5` G15 · `7285c36` G17 · `efeb74a` G18 · this commit G19/G20/G21 (+ `deploy/`, `tools/backup.py`, `tools/cutover_rehearsal.sh`, `tools/perf_benchmark.py`, docs).
@@ -299,7 +299,7 @@ Container footprint: deployed image 332 MB (combined node+python, current stack)
 
 **Evidence:** `tests/test_security_matrix.py` (4: unauth route matrix + no-echo, cookie expiry/tamper, runtime leak-scan of office/state rows, staleness contract) on top of the G10/G14/G22 adversarial suites. **Report: `docs/security-qualification.md`** (19-row dispositions table).
 **Fixed this gate:** XSS-hardened the G16 status chips (all backend interpolations HTML-escaped client-side).
-**Findings:** no unresolved critical/high in enabled capabilities. Two owner items recorded: rotate the historical credential in `075e1f1` (+ optional history purge, needs authorization); Python dep scan (`pip-audit`) NOT RUN — `npm audit` 0 vulnerabilities.
+**Findings:** no unresolved critical/high in enabled capabilities. Owner items recorded: rotate the historical credential in `075e1f1` (+ optional history purge, needs authorization). Python dep scan **CLOSED 2026-11-21**: `pip-audit` installed (dev dep, `make python-test` gate) → No known vulnerabilities found; `npm audit` 0 vulnerabilities.
 **Verdict: PASS with dispositions.**
 
 ### G11 — Memory Palace / ChromaDB (executed 2026-11-21)
