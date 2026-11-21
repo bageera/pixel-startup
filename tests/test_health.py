@@ -68,3 +68,35 @@ def test_ping_unauth_is_401_envelope() -> None:
             assert r.json()["error"] == {"code": 401, "message": "authentication required"}
 
     anyio.run(drive)
+
+
+def test_health_services_rows_are_registry_truth() -> None:
+    async def drive() -> None:
+        app = _app()
+        async with app.router.lifespan_context(app):  # boot registration happens in lifespan
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://t"
+            ) as c:
+                unauth = await c.get("/api/v1/health/services")
+                assert unauth.status_code == 401
+                r = await c.get(
+                    "/api/v1/health/services", headers={"Authorization": "Bearer tok-test"}
+                )
+                assert r.status_code == 200
+                rows = {row["id"]: row for row in r.json()["services"]}
+                # every row carries the six connectivity facts
+                assert all(
+                    {"id", "category", "state", "configured", "connected", "observed"} == set(row)
+                    for row in rows.values()
+                )
+                # comms has no live transport at boot (B3): never marked connected
+                mm = rows["mattermost"]
+                assert mm["configured"] is False and mm["connected"] is False
+                assert mm["state"] == "candidate" and mm["observed"] is None
+                # observed stays None (probe-less rows) or an honest dict (probed rows)
+                assert any(
+                    row.get("observed") is None or isinstance(row.get("observed"), dict)
+                    for row in rows.values()
+                )
+
+    anyio.run(drive)
