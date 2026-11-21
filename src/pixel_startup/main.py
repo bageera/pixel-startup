@@ -185,6 +185,37 @@ def _register_openclaw(container: Container, settings: Settings) -> None:
     container.registry.transition(adapter.provider_id, ProviderState.CANDIDATE)
 
 
+def _register_memory(container: Container, settings: Settings) -> None:
+    """G11: ChromaDB institutional-memory provider; promotion evidence-gated."""
+    from pixel_startup.integrations.chromadb import ChromaMemoryProvider
+
+    provider = ChromaMemoryProvider(
+        settings.chroma_url, settings.chroma_api_token,
+        timeout=settings.chroma_timeout_seconds)
+    container.registry.register(
+        ProviderRegistration(
+            provider_id=provider.provider_id,
+            category=ProviderCategory.MEMORY_RETRIEVAL,
+            implementation="external",
+            handler=provider,
+            endpoint=settings.chroma_url,
+            capabilities=["memory.search", "collections.list"],
+            priority=10,
+            detail=("candidate: contract-tested vs MockTransport; live URL configured"
+                    if provider.configured else
+                    "candidate: contract-tested vs MockTransport; live rows BLOCKED"
+                    " (no endpoint configured)"),
+        )
+    )
+    container.registry.transition(provider.provider_id, ProviderState.CANDIDATE)
+    if provider.configured:
+        try:
+            provider.health()
+            container.registry.transition(provider.provider_id, ProviderState.QUALIFIED)
+        except Exception:
+            pass  # unconfigured/unreachable endpoint: candidate stays the honest state
+
+
 def _register_hermes(container: Container, settings: Settings) -> None:
     """G8: Hermes filesystem adapter; promotion to QUALIFIED is evidence-gated.
 
@@ -227,6 +258,7 @@ async def lifespan(app: FastAPI):
     _register_python_persistence(container, settings)
     _register_openclaw(container, settings)
     _register_hermes(container, settings)
+    _register_memory(container, settings)
     # G10/G6: snapshot live provider state into provider_records (upsert-only)
     from pixel_startup.persistence.store import sync_provider_records
 

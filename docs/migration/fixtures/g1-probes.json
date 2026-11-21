@@ -1,6 +1,6 @@
 {
   "boot": {
-    "startupMs": 158,
+    "startupMs": 310,
     "log": [
       "Using initial configuration",
       "Dashboard auth route ready",
@@ -31,6 +31,7 @@
             "y": "number"
           }
         },
+        "environment": "string",
         "rooms": {
           "array": 3,
           "of": {
@@ -230,6 +231,7 @@
             "array": 0,
             "of": null
           },
+          "environment": "string",
           "rooms": {
             "array": 0,
             "of": null
@@ -269,7 +271,7 @@
           },
           "runtime": "string",
           "sessions": {
-            "array": 2,
+            "array": 1,
             "of": {
               "pid": "number",
               "session_id": "string",

@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    chroma_url: str | None = None  # G11: institutional memory endpoint
+    chroma_api_token: str | None = None
+    chroma_timeout_seconds: float = 5.0
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     port: int = 19000
