@@ -1,7 +1,8 @@
 {
   "boot": {
-    "startupMs": 309,
+    "startupMs": 312,
     "log": [
+      "[DEPRECATED] node backend is in strangler mode as of the G20 cutover: python (pixel_startup) fronts this service; migrate routes to python and retire this process once the /api surface is fully native.",
       "Using initial configuration",
       "Dashboard auth route ready",
       "Pixel Startup v3 — Pixel Office environment on http://0.0.0.0:19031",
@@ -241,7 +242,16 @@
       }
     },
     {
-      "name": "GET /api/presence",
+      "name": "GET /api/presence (unauth)",
+      "method": "GET",
+      "path": "/api/presence",
+      "status": 401,
+      "bodyShape": {
+        "error": "string"
+      }
+    },
+    {
+      "name": "GET /api/presence (bearer token)",
       "method": "GET",
       "path": "/api/presence",
       "status": 200,

@@ -10,7 +10,7 @@ from pixel_startup.main import create_app
 from pixel_startup.persistence.store import EmployeeStore
 
 
-def _app(tmp_path):
+def _app(tmp_path, hermes_home=None):
     data = tmp_path / "data"
     data.mkdir(parents=True)
     (data / "agents.json").write_text(
@@ -36,13 +36,14 @@ def _app(tmp_path):
             pixel_api_token="g16-token",
             pixel_session_secret="sectest",
             pixel_allow_no_password=True,
+            hermes_home=str(hermes_home) if hermes_home else None,
         )
     )
 
 
-def test_office_state_snapshot_shape_and_sanitization(tmp_path) -> None:
+def test_office_state_snapshot_shape_and_sanitization(tmp_path, hermes_home_qualified) -> None:
     async def drive() -> None:
-        app = _app(tmp_path)
+        app = _app(tmp_path, hermes_home=hermes_home_qualified)
         async with app.router.lifespan_context(app):
             db = app.state.container.providers["db"]
             # a verified binding + one task + one pending approval for real shapes

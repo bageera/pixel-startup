@@ -475,7 +475,7 @@ def test_malformed_requests_and_lifecycle_denied(tmp_path) -> None:
 # --- provider state persistence + restart recovery (G6 leftover) ------------------
 
 
-def test_provider_records_sync_and_restart_recovery(tmp_path) -> None:
+def test_provider_records_sync_and_restart_recovery(tmp_path, hermes_home_qualified) -> None:
     data = tmp_path / "data"
     data.mkdir(parents=True)
     (data / "agents.json").write_text(
@@ -503,6 +503,7 @@ def test_provider_records_sync_and_restart_recovery(tmp_path) -> None:
                 pixel_api_token="g10-api-token",
                 pixel_session_secret="sectest",
                 pixel_allow_no_password=True,
+                hermes_home=str(hermes_home_qualified),
             )
         )
         async with app.router.lifespan_context(app):
@@ -540,6 +541,7 @@ def test_provider_records_sync_and_restart_recovery(tmp_path) -> None:
                 pixel_api_token="g10-api-token",
                 pixel_session_secret="sectest",
                 pixel_allow_no_password=True,
+                hermes_home=str(hermes_home_qualified),
             )
         )
         async with fresh.router.lifespan_context(fresh):
