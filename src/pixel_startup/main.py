@@ -146,6 +146,19 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
         adapters=dict(DEFAULT_ADAPTERS),
         workload_tokens={settings.pixel_api_token or "": "workload.automation"},
     )
+    # G14: cross-harness delegation rides the executor; result retrieval exposed
+    from pixel_startup.capabilities.delegation import (
+        make_delegation_adapter,
+        make_result_retriever,
+    )
+
+    container.providers["executor"].adapters["delegate_task"] = make_delegation_adapter(
+        db, container.registry, container.providers["audit"]
+    )
+    container.providers["delegation_results"] = make_result_retriever(
+        db, container.registry, container.providers["audit"]
+    )
+    _register_comms(container, settings)
     container.registry.register(
         ProviderRegistration(
             provider_id="pixel_startup_sqlite",
@@ -190,8 +203,8 @@ def _register_memory(container: Container, settings: Settings) -> None:
     from pixel_startup.integrations.chromadb import ChromaMemoryProvider
 
     provider = ChromaMemoryProvider(
-        settings.chroma_url, settings.chroma_api_token,
-        timeout=settings.chroma_timeout_seconds)
+        settings.chroma_url, settings.chroma_api_token, timeout=settings.chroma_timeout_seconds
+    )
     container.registry.register(
         ProviderRegistration(
             provider_id=provider.provider_id,
@@ -201,10 +214,12 @@ def _register_memory(container: Container, settings: Settings) -> None:
             endpoint=settings.chroma_url,
             capabilities=["memory.search", "collections.list"],
             priority=10,
-            detail=("candidate: contract-tested vs MockTransport; live URL configured"
-                    if provider.configured else
-                    "candidate: contract-tested vs MockTransport; live rows BLOCKED"
-                    " (no endpoint configured)"),
+            detail=(
+                "candidate: contract-tested vs MockTransport; live URL configured"
+                if provider.configured
+                else "candidate: contract-tested vs MockTransport; live rows BLOCKED"
+                " (no endpoint configured)"
+            ),
         )
     )
     container.registry.transition(provider.provider_id, ProviderState.CANDIDATE)
@@ -222,8 +237,9 @@ def _register_storage(container: Container, settings: Settings) -> None:
 
     client = None
     if settings.minio_endpoint and settings.minio_access_key and settings.minio_secret_key:
-        client = SigV4Client(settings.minio_endpoint, settings.minio_access_key,
-                             settings.minio_secret_key)
+        client = SigV4Client(
+            settings.minio_endpoint, settings.minio_access_key, settings.minio_secret_key
+        )
     provider = MinioStorageProvider(settings.minio_bucket, client)
     container.registry.register(
         ProviderRegistration(
@@ -234,13 +250,57 @@ def _register_storage(container: Container, settings: Settings) -> None:
             endpoint=settings.minio_endpoint,
             capabilities=list(provider.capabilities),
             priority=10,
-            detail=("candidate: contract-tested vs FakeS3; live credentials configured"
-                    if client is not None else
-                    "candidate: contract-tested vs FakeS3; live rows BLOCKED"
-                    " (no endpoint configured)"),
+            detail=(
+                "candidate: contract-tested vs FakeS3; live credentials configured"
+                if client is not None
+                else "candidate: contract-tested vs FakeS3; live rows BLOCKED"
+                " (no endpoint configured)"
+            ),
         )
     )
     container.registry.transition(provider.provider_id, ProviderState.CANDIDATE)
+
+
+def _register_comms(container: Container, settings: Settings) -> None:
+    """G13: internal (Mattermost) + external (email) comms; honest BLOCKED rows."""
+    from pixel_startup.integrations.comms import EmailAdapter, MattermostAdapter
+
+    channels = tuple(c.strip() for c in settings.mattermost_channels.split(",") if c.strip())
+    mattermost = MattermostAdapter(settings.mattermost_url, settings.mattermost_token, channels)
+    email = EmailAdapter()  # transport injected when live SMTP creds exist (B3)
+    for provider_id, category, handler, endpoint, caps, detail in (
+        (
+            "mattermost",
+            ProviderCategory.COMMS_INTERNAL,
+            mattermost,
+            settings.mattermost_url,
+            mattermost.capabilities,
+            "candidate: contract-tested vs synthetic transport; live rows BLOCKED (no creds)",
+        ),
+        (
+            "email",
+            ProviderCategory.COMMS_EXTERNAL,
+            email,
+            None,
+            email.capabilities,
+            "candidate: contract-tested vs synthetic transport; live rows BLOCKED (no creds)",
+        ),
+    ):
+        container.registry.register(
+            ProviderRegistration(
+                provider_id=provider_id,
+                category=category,
+                implementation="external",
+                handler=handler,
+                endpoint=endpoint,
+                capabilities=list(caps),
+                priority=10,
+                detail=detail,
+            )
+        )
+        container.registry.transition(provider_id, ProviderState.CANDIDATE)
+    container.providers["comms_mattermost"] = mattermost
+    container.providers["comms_email"] = email
 
 
 def _register_hermes(container: Container, settings: Settings) -> None:

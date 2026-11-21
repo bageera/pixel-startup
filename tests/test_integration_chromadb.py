@@ -16,8 +16,12 @@ def _provider(handler, token="synthetic-token"):
     transport = httpx.MockTransport(handler)
     provider = ChromaMemoryProvider("http://chroma.test:8000", token, timeout=2.0)
     provider._client = lambda: httpx.Client(  # type: ignore[method-assign]
-        base_url="http://chroma.test:8000", auth=None,
-        headers={"Authorization": f"Bearer {token}"}, timeout=2.0, transport=transport)
+        base_url="http://chroma.test:8000",
+        auth=None,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=2.0,
+        transport=transport,
+    )
     return provider
 
 
@@ -29,12 +33,16 @@ def _stub_handler(captured: list[httpx.Request]):
         if request.url.path == "/api/v2/collections":
             return httpx.Response(200, json=[{"id": "c1", "name": "institutional"}])
         if request.url.path == "/api/v2/collections/c1/query":
-            return httpx.Response(200, json={
-                "ids": [["d1", "d2"]],
-                "documents": [["company playbook", "household secret"]],
-                "metadatas": [[{"scope": "company"}, {"scope": "household"}]],
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "ids": [["d1", "d2"]],
+                    "documents": [["company playbook", "household secret"]],
+                    "metadatas": [[{"scope": "company"}, {"scope": "household"}]],
+                },
+            )
         return httpx.Response(404, json={"detail": "not found"})
+
     return handler
 
 
@@ -48,7 +56,10 @@ def test_authorized_search_with_provenance_and_scope_filter() -> None:
     assert body["query_texts"] == ["playbook"]
     # provenance metadata returned on each hit
     assert hits[0]["provenance"] == {
-        "provider": "chromadb", "collection": "institutional", "document_id": "d1"}
+        "provider": "chromadb",
+        "collection": "institutional",
+        "document_id": "d1",
+    }
     assert hits[0]["metadata"]["scope"] == "company"
 
 
@@ -71,6 +82,7 @@ def test_household_scope_sends_separate_filter() -> None:
 def test_auth_failure_fail_closed() -> None:
     def deny(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"detail": "forbidden"})
+
     with pytest.raises(IntegrationDenied):
         _provider(deny).health()
 
@@ -93,6 +105,7 @@ def test_service_unavailable_timeout_and_malformed() -> None:
 def test_secrets_never_in_errors_or_provider_repr() -> None:
     def deny(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401)
+
     secret_token = "synthetic-token"
     provider = _provider(deny, token=secret_token)
     with pytest.raises(IntegrationDenied) as exc:

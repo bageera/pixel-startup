@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     minio_bucket: str = "pixel-artifacts"
     minio_access_key: str | None = None
     minio_secret_key: str | None = None
+    mattermost_url: str | None = None  # G13: internal comms (live creds BLOCKED)
+    mattermost_token: str | None = None
+    mattermost_channels: str = ""  # comma-separated allowlist
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     port: int = 19000

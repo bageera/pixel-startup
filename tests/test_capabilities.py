@@ -518,6 +518,8 @@ def test_provider_records_sync_and_restart_recovery(tmp_path) -> None:
                 "hermes_home": "qualified",
                 "chromadb": "candidate",
                 "minio": "candidate",
+                "mattermost": "candidate",
+                "email": "candidate",
             }
             assert (
                 db.conn.execute("SELECT COUNT(*) AS n FROM employees").fetchone()["n"] == 1
@@ -534,7 +536,7 @@ def test_provider_records_sync_and_restart_recovery(tmp_path) -> None:
         async with fresh.router.lifespan_context(fresh):
             db2 = fresh.state.container.providers["db"]
             n = db2.conn.execute("SELECT COUNT(*) AS n FROM provider_records").fetchone()["n"]
-            assert n == 6  # js, sqlite, openclaw, hermes, chromadb, minio
+            assert n == 8  # js, sqlite, openclaw, hermes, chromadb, minio, mattermost, email
             assert (
                 db2.conn.execute("SELECT MAX(version) AS v FROM schema_migrations").fetchone()["v"]
                 >= 4

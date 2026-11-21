@@ -37,9 +37,7 @@ class ChromaMemoryProvider:
         headers = {"Content-Type": "application/json"}
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
-        return httpx.Client(
-            base_url=self._url, headers=headers, timeout=self._timeout
-        )
+        return httpx.Client(base_url=self._url, headers=headers, timeout=self._timeout)
 
     def _request(self, method: str, path: str, json_body: dict | None = None) -> dict | list:
         if not self.configured:
@@ -63,9 +61,10 @@ class ChromaMemoryProvider:
 
     def health(self) -> dict:
         body = self._request("GET", "/api/v2/heartbeat")
-        if not isinstance(body, dict) or "nanosecond heartbeat".lower() not in " ".join(
-            str(k) for k in body
-        ).lower():
+        if (
+            not isinstance(body, dict)
+            or "nanosecond heartbeat".lower() not in " ".join(str(k) for k in body).lower()
+        ):
             # Chroma answers heartbeat with a nanosecond-timestamp dict; shape only.
             if not isinstance(body, dict):
                 raise ProviderUnavailable("chromadb malformed heartbeat")
@@ -92,13 +91,17 @@ class ChromaMemoryProvider:
         if not query_texts or scope not in ("company", "household"):
             raise IntegrationDenied("malformed memory request")
         cid = self._collection_id(collection)
-        rows_body = self._request("POST", f"/api/v2/collections/{cid}/query", {
-            "query_embeddings": None,
-            "query_texts": query_texts,
-            "n_results": min(k, 25),
-            "include": ["documents", "metadatas", "ids"],
-            "where": {"scope": scope},  # server-side scope isolation
-        })
+        rows_body = self._request(
+            "POST",
+            f"/api/v2/collections/{cid}/query",
+            {
+                "query_embeddings": None,
+                "query_texts": query_texts,
+                "n_results": min(k, 25),
+                "include": ["documents", "metadatas", "ids"],
+                "where": {"scope": scope},  # server-side scope isolation
+            },
+        )
         if not isinstance(rows_body, dict):
             raise ProviderUnavailable("chromadb malformed query response")
         body = rows_body
@@ -111,15 +114,17 @@ class ChromaMemoryProvider:
                 meta = metas[pos] or {}
                 if meta.get("scope") != scope:  # client-side isolation guard
                     continue  # dropped, never returned across scopes
-                out.append({
-                    "document": docs[pos],
-                    "metadata": meta,
-                    "provenance": {
-                        "provider": self.provider_id,
-                        "collection": collection,
-                        "document_id": doc_id,
-                    },
-                })
+                out.append(
+                    {
+                        "document": docs[pos],
+                        "metadata": meta,
+                        "provenance": {
+                            "provider": self.provider_id,
+                            "collection": collection,
+                            "document_id": doc_id,
+                        },
+                    }
+                )
         return out
 
     # provider-registry contract (invoke(operation, payload) -> dict)

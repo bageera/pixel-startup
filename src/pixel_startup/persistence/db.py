@@ -130,6 +130,15 @@ MIGRATIONS: dict[int, list[str]] = {
             created_at TEXT NOT NULL
         )""",
     ],
+    5: [
+        # G14: delegation results keyed by task (side-effect outcomes never guessed)
+        """CREATE TABLE IF NOT EXISTS task_results (
+            task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+            status TEXT NOT NULL,
+            result TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+    ],
 }
 
 EMPLOYEE_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {

@@ -159,6 +159,36 @@ Statuses recorded as: PASS / FAIL / BLOCKED / SKIP / NOT RUN per workflow MVP-01
 
 ## Gates G3-G20 — registered next
 
+### G11 — Memory Palace / ChromaDB (executed 2026-11-21)
+
+**Objective:** qualify the remote ChromaDB service as institutional-memory provider.
+**Files:** `integrations/chromadb.py`, `config.py` (chroma_url/token/timeout), `main.py` (`_register_memory`), `tests/test_integration_chromadb.py` (7).
+**Implementation:** documented REST v2 surface only (`heartbeat`, `collections`, scoped `query`); scope isolation enforced server-side (`where: {scope}`) AND client-side (metadata mismatch dropped); provenance (provider/collection/document_id) on every hit; errors normalized (401/403 → IntegrationDenied, 5xx/timeout/malformed → ProviderUnavailable); token never logged or repr'd (asserted); configurable endpoint+auth+timeout; unconfigured → `not configured; live rows BLOCKED`. Production collections are never rebuilt or overwritten (query-only adapter).
+**Results:** 7/7 synthetic (authorized search, scope filter in request body, cross-scope drop, household filter, auth fail-closed, 503/malformed/unconfigured, secret-free errors/repr, invoke contract + arbitrary-op refusal). Registry: `chromadb` candidate/detailed; boot health-promotes to QUALIFIED **only when a URL is configured**.
+**Live rows: BLOCKED** — no endpoint configured anywhere in the repo (verified name-scan); non-destructive reachability probe impossible without guessing, which the mandate forbids. **Verdict: PASS-SYNTHETIC.**
+
+### G12 — MinIO object storage (executed 2026-11-21)
+
+**Files:** `integrations/minio.py`, `config.py` (minio_endpoint/bucket/access/secret), `main.py` (`_register_storage`), `tests/test_integration_minio.py` (9).
+**Implementation:** `S3Client` protocol + minimal SigV4 path-style client (stdlib hmac/sha256, zero deps); scope-prefix chokepoint `validate_key` (all ops route through it): traversal/`\`/null/absolute refused, prefixes `company/|shared/|household/` enforced against caller scope; SHA-256 verified on GET (tamper → fail closed), X-Amz-Meta-Sha256 written on PUT; 25 MB limit; 401/403→AccessDenied, 404→FileNotFoundError, 5xx/unreachable→StorageUnavailable; duplicate PUTs idempotent (same digest); unconfigured → BLOCKED.
+**Results:** 9/9 synthetic (roundtrip+integrity, traversal/prefix guards, cross-subject isolation incl. household→company refusal, tamper+oversize, unauthorized/unavailable/BLOCKED, scoped listing+idempotent dup, revocation mid-flight, sigv4-shape + no-secret-in-source).
+**Live rows: BLOCKED** — no endpoint configured. **Verdict: PASS-SYNTHETIC.**
+
+### G13 — Communications (executed 2026-11-21)
+
+**Files:** `integrations/comms.py`, `config.py` (mattermost_url/token/channels), `main.py` (`_register_comms`; registry rows `mattermost` COMMS_INTERNAL + `email` COMMS_EXTERNAL), `tests/test_integration_comms.py` (5).
+**Implementation:** Mattermost — channel ALLOWLIST enforced first, correlation-id idempotent delivery (replays add no POST), single 429 retry, fail-closed normalization, unconfigured BLOCKED. Email — compose is harmless by construction (`pending_approval`), recipient validation + dedupe, attachment name/type/size allowlist, subject header-injection refusal, `send()` requires `{status: approved, by: ...}` owner approval, replay dedupe, no send merely because a draft exists.
+**Results:** 5/5 synthetic incl. cross-scope channel refusal, forged-Bcc and forged-From refusals, approval-bypass attempts denied.
+**Live rows: BLOCKED (B3)** — no Mattermost/email creds on this host. **Verdict: PASS-SYNTHETIC.**
+
+### G14 — Cross-harness delegation (executed 2026-11-21)
+
+**Discovery (mandate-first):** the installed Hermes ships a documented A2A (JSON-RPC/SSE) inbound platform (`plugins/platforms/a2a/`: `message/send`, `message/stream`, `tasks/*`, agent-card discovery, optional peer tokens, localhost-only default) — but it is NOT running (`gateway_state.json` platforms = `['mattermost']`). Verdict recorded, nothing fabricated: **the submission mechanism exists and is implementable; it is disabled on this host → B5 resolution is ONE owner action (enable A2A port + peer token)**.
+**Files:** `capabilities/delegation.py`, `capabilities/registry.py` (`delegate.hermes.task`), `capabilities/api route GET /api/v1/delegate/{task_id}/result`, `main.py` wiring (adapter + retriever per-container), `persistence/db.py` schema **v5 `task_results`**, `tests/test_integration_delegation.py` (10).
+**Protocol:** rides the G10 executor (workload auth, verified-binding identity, grants, scope, replay protection, audit). Task persisted (created) BEFORE dispatch; deterministic `task.id = sha256(correlation|target|objective)` → duplicate submissions replay, dispatch happens exactly once; ack → authorized → dispatched → running; unconfigured/unsupported harness → **cancelled** with `blocker: B1|B5` (persisted truth, no fabricated ack); result retrieval completes → completed + `task_results` row; dispatched-without-ack on restart → `reconcile_stale` cancels honestly (never marks success); uncertain outcomes stay uncertain (no blind retries).
+**Results (mandated scenarios):** owner→employee dispatch+result ✓; Charon→OpenClaw ✗→BLOCKED B1 asserted; Hermes result retrieval + delivery ✓; office activity carries delegation ✓; authorization failure (missing grant) ✓; unavailable harness ✓; duplicate submission (1 dispatch) ✓; restart persistence + reconciliation ✓; revoked runtime binding ✓; unsupported harness operations remain `supported: false` (honest).
+**Live rows: BLOCKED** — B1 (no gateway) and B5 (A2A not enabled). **Verdict: PASS-SYNTHETIC.**
+
 ### G16 — Frontend compatibility and live activity (criteria 2026-11-20, executed same session)
 
 **Criteria (registered pre-execution):**

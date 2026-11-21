@@ -54,22 +54,23 @@ def validate_key(key: str, scope: str, subject_id: str) -> str:
 
 
 class S3Client(Protocol):
-    def request(self, method: str, path: str, headers: dict[str, str],
-                body: bytes | None = None) -> tuple[int, dict[str, str], bytes]: ...
+    def request(
+        self, method: str, path: str, headers: dict[str, str], body: bytes | None = None
+    ) -> tuple[int, dict[str, str], bytes]: ...
 
 
 class SigV4Client:
     """Minimal S3 path-style client; zero dependencies, no credential logging."""
 
-    def __init__(self, host: str, access_key: str, secret_key: str,
-                 timeout: float = 10.0):
+    def __init__(self, host: str, access_key: str, secret_key: str, timeout: float = 10.0):
         self._host = host  # e.g. "minio.internal:9000"
         self._ak = access_key
         self._sk = secret_key
         self._timeout = timeout
 
-    def request(self, method: str, path: str, headers: dict[str, str],
-                body: bytes | None = None) -> tuple[int, dict[str, str], bytes]:
+    def request(
+        self, method: str, path: str, headers: dict[str, str], body: bytes | None = None
+    ) -> tuple[int, dict[str, str], bytes]:
         body = body or b""
         amz_date = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         date_stamp = amz_date[:8]
@@ -82,22 +83,24 @@ class SigV4Client:
         }
         signed = ";".join(sorted(base_headers))
         canonical_headers = "".join(
-            f"{k.lower()}:{base_headers[k]}\n" for k in sorted(base_headers))
-        canonical = "\n".join([
-            method, path, "", canonical_headers, signed, payload_hash])
+            f"{k.lower()}:{base_headers[k]}\n" for k in sorted(base_headers)
+        )
+        canonical = "\n".join([method, path, "", canonical_headers, signed, payload_hash])
         scope = f"{date_stamp}/us-east-1/s3/aws4_request"
         k = hmac.new(b"AWS4" + self._sk.encode(), date_stamp.encode(), hashlib.sha256).digest()
         k = hmac.new(k, b"us-east-1", hashlib.sha256).digest()
         k = hmac.new(k, b"s3", hashlib.sha256).digest()
         k = hmac.new(k, b"aws4_request", hashlib.sha256).digest()
-        sig = hmac.new(
-            k, canonical.encode(), hashlib.sha256).hexdigest()
+        sig = hmac.new(k, canonical.encode(), hashlib.sha256).hexdigest()
         base_headers["Authorization"] = (
             f"AWS4-HMAC-SHA256 Credential={self._ak}/{scope}, "
-            f"SignedHeaders={signed}, Signature={sig}")
-        conn = http.client.HTTPSConnection(self._host, timeout=self._timeout) \
-            if ":" not in self._host or self._host.endswith(":443") \
+            f"SignedHeaders={signed}, Signature={sig}"
+        )
+        conn = (
+            http.client.HTTPSConnection(self._host, timeout=self._timeout)
+            if ":" not in self._host or self._host.endswith(":443")
             else http.client.HTTPConnection(self._host, timeout=self._timeout)
+        )
         try:
             conn.request(method, urllib.parse.quote(path), body=body, headers=base_headers)
             resp = conn.getresponse()
@@ -132,9 +135,12 @@ class MinioStorageProvider:
             raise AccessDenied("object storage rejected the request")
         if status != 200:
             raise StorageUnavailable(f"object storage error {status}")
-        return {"size": int(headers.get("Content-Length") or 0),
-                "content_type": headers.get("Content-Type"),
-                "key": key, "bucket": self._bucket}
+        return {
+            "size": int(headers.get("Content-Length") or 0),
+            "content_type": headers.get("Content-Type"),
+            "key": key,
+            "bucket": self._bucket,
+        }
 
     def get(self, key: str, scope: str, subject_id: str) -> tuple[bytes, dict]:
         key = validate_key(key, scope, subject_id)
@@ -149,30 +155,50 @@ class MinioStorageProvider:
         integrity = {"sha256": hashlib.sha256(body).hexdigest(), "size": len(body)}
         if provided and len(provided) == 64 and provided != integrity["sha256"]:
             raise StorageUnavailable("object integrity mismatch (sha256)")  # corruption
-        return body, {"key": key, "bucket": self._bucket, "provenance": {
-            "provider": self.provider_id, "bucket": self._bucket, "key": key,
-            "sha256": integrity["sha256"], "content_type": headers.get("Content-Type"),
-        }}
+        return body, {
+            "key": key,
+            "bucket": self._bucket,
+            "provenance": {
+                "provider": self.provider_id,
+                "bucket": self._bucket,
+                "key": key,
+                "sha256": integrity["sha256"],
+                "content_type": headers.get("Content-Type"),
+            },
+        }
 
-    def put(self, key: str, body: bytes, scope: str, subject_id: str,
-            content_type: str = "application/octet-stream") -> dict:
+    def put(
+        self,
+        key: str,
+        body: bytes,
+        scope: str,
+        subject_id: str,
+        content_type: str = "application/octet-stream",
+    ) -> dict:
         key = validate_key(key, scope, subject_id)
         if len(body) > MAX_OBJECT_BYTES:
             raise AccessDenied("object exceeds the size limit")
-        headers = {"Content-Type": content_type,
-                   "X-Amz-Meta-Sha256": hashlib.sha256(body).hexdigest()}
+        headers = {
+            "Content-Type": content_type,
+            "X-Amz-Meta-Sha256": hashlib.sha256(body).hexdigest(),
+        }
         status, _, _ = self._require().request("PUT", f"/{self._bucket}/{key}", headers, body)
         if status in (401, 403):
             raise AccessDenied("object storage rejected the request")
         if status not in (200, 201):
             raise StorageUnavailable(f"object storage error {status}")
-        return {"key": key, "bucket": self._bucket, "sha256": headers["X-Amz-Meta-Sha256"],
-                "size": len(body)}
+        return {
+            "key": key,
+            "bucket": self._bucket,
+            "sha256": headers["X-Amz-Meta-Sha256"],
+            "size": len(body),
+        }
 
     def list(self, prefix: str, scope: str, subject_id: str) -> list[str]:
         prefix = validate_key(prefix if prefix.endswith("/") else f"{prefix}/", scope, subject_id)
         status, _, body = self._require().request(
-            "GET", f"/{self._bucket}?list-type=2&prefix={urllib.parse.quote(prefix)}", {})
+            "GET", f"/{self._bucket}?list-type=2&prefix={urllib.parse.quote(prefix)}", {}
+        )
         if status in (401, 403):
             raise AccessDenied("object storage rejected the request")
         if status != 200:

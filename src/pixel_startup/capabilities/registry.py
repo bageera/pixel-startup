@@ -50,6 +50,19 @@ CAPABILITIES: dict[str, Capability] = {
             " result is redacted before return (qualification)."
         ),
     ),
+    "delegate.hermes.task": Capability(
+        capability_id="delegate.hermes.task",
+        adapter="delegate_task",
+        scopes=("company", "shared"),
+        requires_approval=False,
+        requires_credential=False,
+        credential_provider=None,
+        description=(
+            "G14 cross-harness delegation: persist task, dispatch via the target"
+            " harness handler, record correlation; unconfigured harnesses cancel"
+            " honestly (B1/B5), never fabricate."
+        ),
+    ),
 }
 
 

@@ -8,11 +8,28 @@ the request body. Denials map to a generic 403 — nothing sensitive is echoed.
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from pixel_startup.capabilities.delegation import DelegationFailure
 from pixel_startup.capabilities.executor import CapabilityExecutor
 from pixel_startup.capabilities.registry import CapabilityDenied
 from pixel_startup.security.auth import require_auth
 
 router = APIRouter()
+
+
+@router.get("/api/v1/delegate/{task_id}/result")
+async def delegation_result(
+    task_id: str,
+    request: Request,
+    auth_method: str = Depends(require_auth),
+) -> dict:
+    _ = auth_method  # session owner OR automation bearer; identity already proven
+    retriever = request.app.state.container.providers.get("delegation_results")
+    if retriever is None:
+        raise HTTPException(status_code=503, detail="delegation service unavailable")
+    try:
+        return retriever(task_id)
+    except DelegationFailure as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
 
 
 @router.post("/api/v1/capabilities/execute")
