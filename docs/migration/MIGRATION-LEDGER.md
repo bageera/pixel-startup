@@ -770,3 +770,56 @@ Remaining honest skips: stress tiers S2-S4 (G32-E), sustained frame-time
 profiling on a non-throttled display (this VM's rAF floor is 15 Hz), and the
 delta/patch protocol (STILL refused — 304 remains the incremental mechanism
 until payload size is measured as a problem).
+
+### G32 Phase 3 — owner-reviewed boundaries (G32-A/B/C traps + exit criteria)
+
+Reviewer boundaries for this phase: extract the renderer WITHOUT visible
+behavior change; manifest-driven components behind a feature flag; cache
+static layers; suspend hidden-tab work; never allocate a loop per component;
+consume the Python aggregation in the frontend; plus three regression traps
+(ETag access-context, placement collisions, scheduler ownership) and eight
+exit criteria — all measured below.
+
+**G32-A (modularization + flag):** `assets/office-render.js` owns the frame
+loop, the static environment layer and the overlay; index.html feeds it
+(policy + scene description) — `Office.draw`/`drawOfficeTile` grew an optional
+target-ctx param, canvas callers unchanged, so scene output is identical
+(screenshot + loop behavior verified). Two live-found defects fixed in-commit:
+an argument-order inversion (`office.draw(lctx, sm)` vs sm-first) that killed
+the loop silently (root-cause hardening added: the loop logs once and KEEPS
+scheduling — a renderer defect can no longer stop the scene), and an empty
+env-layer cache from src-identity tracking (environments reuse the same Image
+object with a new src — the layer now tracks `src|naturalWidth`).
+`startup.scene_components` (no-erase boolean, tested incl. mood coexistence)
+gates the office-canvas org overlay: one scene fetch per boot, owner-session
+required (org data stays owner-scoped), flip verified live + restored.
+
+**G32-B (bounded rendering, completion):** static layer = one drawImage
+instead of background+door re-blit per draw (rebuilt only on background src /
+dimension change); pixel-lite/reduced-motion is now STATIC — zero idle frames
+(measured: after the forced dirty frame, 0 draws over 1.5 s; node test pins
+the rule); visibilitychange marks dirty once on return (rAF already suspends
+hidden); stats().samples became a LIFETIME tick counter (the previous
+ring-cap saturation read like a stopped loop — honest instrumentation fix,
+suite-pinned with 300 ticks).
+
+**G32-C (completion):** scene chips are clickable — CHO navigation
+organization → project → task evidence via one delegated onclick; the
+drill-down reuses the graph cache (same ETag/304 path) and prints each node's
+execution/attention/outcome plus its evidence outcome lines (verified live on
+the org root; recurses as the graph grows).
+
+**Traps:** ETag — mood+scope are part of the identity: CHO policy flip → new
+ETag (a cached If-None-Match gets 200, never 304, tested); scopes never share
+ETags (tested). Placement — dense-scene collisions resolve deterministically
+(row bumps in sorted order; 30 caps + 15 projects + 8 ideas → unique cells,
+byte-identical repeat, tested); capability chips bounded (30 → 10 + summary,
+tested). Scheduler ownership — probe vs gameLoop ticks 48/47 in the same
+window (one chain); mode/theme changes only `setOverlay`.
+
+**Gates:** 183 pytest (3 new phase-3, +1 lifetime-stats) / npm suite 65 +
+9 office-loop asserts PASSED / pyright 0 / ruff clean+fmt / dash+index inline
+syntax OK. **Verdict: PASS** against the owner's phase-3 boundaries and exit
+criteria. Remaining skips: stress tiers S2-S4 (G32-E), sustained profiling on
+a non-throttled 60 Hz display (headless VM rAF floor ~15 Hz), office overlay
+chip visual density at scale (bounded by layoutOverlay cap).

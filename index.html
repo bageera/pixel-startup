@@ -62,6 +62,7 @@
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="assets/office-loop.js"></script>
+    <script src="assets/office-render.js"></script>
     <script>
         // === i18n (EN/ES). Keys below; static markup uses data-i18n / data-i18n-ph / data-i18n-title.
         const I18N = {
@@ -587,18 +588,19 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                 ctx.restore();
             }
 
-            drawOfficeTile(x, y, type) {
+            drawOfficeTile(x, y, type, target) {
                 if (!this.imagesLoaded) return;
 
-                ctx.save();
-                ctx.translate(x, y);
+                const c = target || ctx;
+                c.save();
+                c.translate(x, y);
 
                 // Only draw the full background
                 if (type === 'background') {
-                    ctx.drawImage(this.sprites.background, 0, 0);
+                    c.drawImage(this.sprites.background, 0, 0);
                 }
 
-                ctx.restore();
+                c.restore();
             }
         }
 
@@ -1090,12 +1092,13 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                 this.chairs = [];
             }
 
-            draw(spriteManager) {
+            draw(spriteManager, target) {
                 // Dibujar fondo completo (paredes, suelo y muebles)
-                spriteManager.drawOfficeTile(0, 0, 'background');
+                const c = target || ctx;
+                spriteManager.drawOfficeTile(0, 0, 'background', c);
 
                 // Parchear visualmente (abrir) las puertas si están abiertas
-                ctx.save();
+                c.save();
                 for (let key in DOORS_OPEN) {
                     if (DOORS_OPEN[key]) {
                         const [tx, ty] = key.split(',').map(Number);
@@ -1105,15 +1108,15 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                         // Esto evita que entren recortes de muros u otros muebles en los bordes
                         const srcX = isEven ? 4 : 5;
                         const srcY = 22;
-                        
-                        ctx.drawImage(
+
+                        c.drawImage(
                             spriteManager.sprites.background,
-                            srcX * GRID_SIZE, srcY * GRID_SIZE, GRID_SIZE, GRID_SIZE, 
+                            srcX * GRID_SIZE, srcY * GRID_SIZE, GRID_SIZE, GRID_SIZE,
                             tx * GRID_SIZE, ty * GRID_SIZE, GRID_SIZE, GRID_SIZE
                         );
                     }
                 }
-                ctx.restore();
+                c.restore();
             }
         }
 
@@ -1225,6 +1228,25 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
 
                 const response = await fetch('/api/config');
                 const config = await response.json();
+
+                // G32-A feature flag: manifest-driven org components on the
+                // office canvas (organizational decision in the startup config;
+                // applied on the next boot, one fetch, no new loops).
+                if ((config.startup || {}).scene_components === true) {
+                    try {
+                        const sres = await fetch('/api/v1/scene?scope=company', window.__sceneOverlayEtag ? { headers: { 'If-None-Match': window.__sceneOverlayEtag } } : {});
+                        if (sres.status === 200) {
+                            const manifest = await sres.json();
+                            window.__sceneOverlayEtag = sres.headers.get('ETag');
+                            window.__sceneOverlayComponents = manifest.components || [];
+                        }
+                        // 304 → overlay stays as-is (no stale swap, no re-render loop)
+                    } catch (e) {
+                        console.log('scene overlay unavailable — office continues unflagged');
+                    }
+                } else {
+                    window.__sceneOverlayComponents = null; // flag off = no chips
+                }
 
                 // G22: honor the persisted environment (default continental) before placing agents
                 await applyEnvironment(
@@ -1347,86 +1369,26 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
 
 
 
-        // G32-B frame policy: full redraw only when it has a reason
-        const framePolicy = PixelLoop.createFramePolicy({
-            ambientMs: 100,
-            activeMs: 33,
-            liteMs: 200,
-            animating: () => (window.characters || []).some(c => c.path && c.path.length > 0),
-            lite: () => document.documentElement.classList.contains('pixel-lite')
-                || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        // G32-A: the extracted renderer module owns the loop, the static
+        // environment layer and the flagged manifest-driven overlay. This file
+        // only describes the scene to it — repeated switches never re-loop.
+        const officeRenderer = OfficeRenderer.start({
+            policy: PixelLoop.createFramePolicy({
+                ambientMs: 100,
+                activeMs: 33,
+                animating: () => (window.characters || []).some(c => c.path && c.path.length > 0),
+                lite: () => document.documentElement.classList.contains('pixel-lite')
+                    || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+            }),
         });
+        if (window.__sceneOverlayComponents) officeRenderer.setOverlay(window.__sceneOverlayComponents);
 
-        // Loop principal
-        function gameLoop(nowMs) {
-            const tick = typeof nowMs === 'number' ? nowMs : performance.now();
-            framePolicy.noteFrame(tick);
-            const decision = framePolicy.decide(tick);
-            // Cosmetic logic (targets, frames) keeps its original per-tick cadence;
-            // only the CANVAS redraw is capped by the policy.
-            if (window.simulationStarted && window.characters) {
-                characters.forEach(char => char.update());
-            }
-            if (!decision.draw) {
-                requestAnimationFrame(gameLoop);
-                return;
-            }
-            if (!window.simulationStarted) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                office.draw(spriteManager);
-                if (typeof characters !== 'undefined') {
-                    characters.sort((a, b) => a.y - b.y);
-                    for (let char of characters) char.draw(spriteManager);
-                    // Nombres
-                    ctx.font = '10px "Courier New", monospace';
-                    ctx.textAlign = 'center';
-                    for (let char of characters) {
-                        const text = char.name;
-                        const nameWidth = ctx.measureText(text).width;
-                        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                        const textY = char.y - 45;
-                        ctx.fillRect(char.x - nameWidth/2 - 4, textY - 10, nameWidth + 8, 14);
-                        ctx.fillStyle = 'white';
-                        ctx.fillText(text, char.x, textY);
-                    }
-                }
-                requestAnimationFrame(gameLoop);
-                return;
-            }
-        // Clear canvas (fondo general oscuro)
-            window.__pixelDraws = (window.__pixelDraws || 0) + 1; // G32-B evidence counter
-            ctx.fillStyle = '#1e1e2e';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Dibujar oficina
-            office.draw(spriteManager);
-            
-            // Ordenar personajes por posición 'y' (para profundidad)
-            const sortedCharacters = [...characters].sort((a, b) => a.y - b.y);
-            
-            // Dibujar personajes
-            sortedCharacters.forEach(char => char.draw(spriteManager));
-
-
-            // Refresh timer
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            document.getElementById('timer').textContent = elapsed;
-
-            
-            // Dibujar nombres de los personajes
-            ctx.font = '10px "Courier New", monospace';
-            ctx.textAlign = 'center';
-            for (let char of characters) {
-                const text = char.name;
-                const nameWidth = ctx.measureText(text).width;
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                const textY = char.y - 45;
-                ctx.fillRect(char.x - nameWidth/2 - 4, textY - 10, nameWidth + 8, 14);
-                ctx.fillStyle = 'white';
-                ctx.fillText(text, char.x, textY);
-            }
-            requestAnimationFrame(gameLoop);
-        }
+        // Hidden-tab discipline: on return, redraw once (rAF already suspends
+        // while hidden; large gaps are rejected by the stats ring).
+        document.addEventListener('visibilitychange', () => {
+            const p = window.__pixelFramePolicy;
+            if (p && !document.hidden) p.dirty = true;
+        });
 
         // --- AI Chat Functions ---
 
@@ -2566,7 +2528,6 @@ Write NOTHING MORE than raw JSON, without code block markdown.`;
         }
 
         // Start
-        gameLoop();
     </script>
 </body>
 </html>

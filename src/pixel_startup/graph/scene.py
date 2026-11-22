@@ -29,9 +29,17 @@ DECISION_CAP = 5  # and five decision stations
 ATTENTION_CAP = 10  # and ten attention components
 
 
-def _grid(seed: str, layer: int) -> tuple[int, int]:
+def _grid(seed: str, layer: int, taken: set[tuple[int, int]]) -> tuple[int, int]:
+    """Deterministic placement with consistent collision resolution: bump the
+    y row until the cell is free, in sorted-component order, so the same
+    organizational state always yields the same positions."""
     h = int(md5(seed.encode()).hexdigest(), 16)
-    return (h % 12) * 52 + 12, layer * 96 + ((h >> 6) % 4) * 22
+    x = (h % 12) * 52 + 12
+    y = layer * 96 + ((h >> 6) % 4) * 22
+    while (x, y) in taken:
+        y += 40  # one chip height + gap, deterministic and idempotent
+    taken.add((x, y))
+    return x, y
 
 
 def scene_manifest(
@@ -48,10 +56,11 @@ def scene_manifest(
     components: list[dict] = []
     by_node = {n["id"]: n for n in nodes}
 
+    taken: set[tuple[int, int]] = set()  # occupied cells for this build
     # organization root: always present
     org = next((n for n in nodes if n["kind"] == "organization"), None)
     if org is not None:
-        x, y = _grid(org["id"], 0)
+        x, y = _grid(org["id"], 0, taken)
         components.append(
             {
                 "type": "org",
@@ -74,7 +83,7 @@ def scene_manifest(
         for ref in b["direct_ids"]:
             blockers_by_ref.setdefault(ref, []).append(b)
     for p in projects[:STATION_CAP]:
-        x, y = _grid(p["id"], 1)
+        x, y = _grid(p["id"], 1, taken)
         v = health.get(p["id"], {})
         act = attention(p, today) if today is not None else {}
         dependencies = sorted(b["title"] for b in blockers_by_ref.get(p["id"], []))
@@ -102,7 +111,7 @@ def scene_manifest(
         )
     rest = len(projects) - min(len(projects), STATION_CAP)
     if rest > 0:  # G32-C: aggregate rather than render forty elaborate stations
-        x, y = _grid(f"{scope}-projects-summary", 1)
+        x, y = _grid(f"{scope}-projects-summary", 1, taken)
         components.append(
             {
                 "type": "summary",
@@ -120,7 +129,7 @@ def scene_manifest(
     ideas = [n for n in nodes if n["kind"] == "idea" and n["status"] == "active"]
     if mood == "curious":
         for i in sorted(ideas, key=lambda n: n["id"])[:STATION_CAP]:
-            x, y = _grid(i["id"], 2)
+            x, y = _grid(i["id"], 2, taken)
             components.append(
                 {
                     "type": "seed",
@@ -133,7 +142,7 @@ def scene_manifest(
                 }
             )
         if len(ideas) > STATION_CAP:
-            x, y = _grid(f"{scope}-ideas-summary", 2)
+            x, y = _grid(f"{scope}-ideas-summary", 2, taken)
             components.append(
                 {
                     "type": "summary",
@@ -147,7 +156,7 @@ def scene_manifest(
                 }
             )
     elif ideas:
-        x, y = _grid(f"{scope}-ideas-summary", 2)
+        x, y = _grid(f"{scope}-ideas-summary", 2, taken)
         components.append(
             {
                 "type": "summary",
@@ -168,7 +177,7 @@ def scene_manifest(
             n = by_node.get(ref)
             if n is None:
                 continue
-            x, y = _grid(ref, 3)
+            x, y = _grid(ref, 3, taken)
             components.append(
                 {
                     "type": "decision",
@@ -183,7 +192,7 @@ def scene_manifest(
                 }
             )
         if proj["risks"]:
-            x, y = _grid(f"{scope}-risks", 3)
+            x, y = _grid(f"{scope}-risks", 3, taken)
             components.append(
                 {
                     "type": "summary",
@@ -204,7 +213,7 @@ def scene_manifest(
         act = attention(n, today)
         if not act["requires_action"]:
             continue
-        x, y = _grid(n["id"], 4)
+        x, y = _grid(n["id"], 4, taken)
         components.append(
             {
                 "type": "attention",
@@ -219,8 +228,10 @@ def scene_manifest(
         )
 
     # capabilities: verified only. Unverified = suggestion, never availability.
-    for n in sorted((n for n in nodes if n["kind"] == "capability"), key=lambda x: x["id"]):
-        x, y = _grid(n["id"], 5)
+    # Bounded like everything else: at most STATION_CAP chips + one summary.
+    caps = sorted((n for n in nodes if n["kind"] == "capability"), key=lambda x: x["id"])
+    for n in caps[:STATION_CAP]:
+        x, y = _grid(n["id"], 5, taken)
         if n["status"] == "archived":
             availability = "unavailable"
         elif n.get("verified"):
@@ -236,6 +247,20 @@ def scene_manifest(
                 "x": x,
                 "y": y,
                 "availability": availability,
+            }
+        )
+    if len(caps) > STATION_CAP:
+        x, y = _grid(f"{scope}-caps-summary", 5, taken)
+        components.append(
+            {
+                "type": "summary",
+                "id": f"summary-capabilities-{scope}",
+                "bucket": "capabilities",
+                "zone": "capability",
+                "label": f"{len(caps) - STATION_CAP} more capabilities",
+                "count": len(caps) - STATION_CAP,
+                "x": x,
+                "y": y,
             }
         )
 

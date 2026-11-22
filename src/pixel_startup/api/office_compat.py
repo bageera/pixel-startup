@@ -216,6 +216,8 @@ class OfficeState:
                 "driven",
             ):
                 merged["mood"] = new["mood"].lower()  # G30-F: CHO view preference
+            if isinstance(new.get("scene_components"), bool):
+                merged["scene_components"] = new["scene_components"]  # G32-A: office overlay flag
         merged.setdefault("direction", "")
         merged.setdefault("goals", [])
         merged.setdefault("mood", "focused")

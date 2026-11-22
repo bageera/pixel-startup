@@ -18,14 +18,14 @@ function createFramePolicy(opts) {
     {
       ambientMs: 100, // 10 fps ambient redraw cap (cosmetic wander)
       activeMs: 33, // 30 fps while a character actually travels
-      liteMs: 200, // 5 fps on pixel-lite / reduced-motion
     },
     opts
   );
 
   const times = new Float64Array(S);
   let ti = 0;
-  let count = 0;
+  let count = 0; // ring-buffer occupancy (capped at S)
+  let total = 0; // lifetime ticks — the honest loop-ownership probe
   let lastNow = null;
   let lastDraw = -Infinity;
   let dirty = true;
@@ -45,28 +45,44 @@ function createFramePolicy(opts) {
           times[ti] = dt;
           ti = (ti + 1) % S;
           if (count < S) count++;
+          total++;
         }
       }
       lastNow = nowMs;
     },
-    /* Decide whether this tick draws the scene; returns {draw, mode}. */
+    /* Decide whether this tick draws the scene; returns {draw, mode}.
+     * Degradation (pixel-lite / reduced-motion) = static: zero idle frames,
+     * presentation sacrificed before information — only dirty redraws. */
     decide(nowMs) {
       const animating = typeof o.animating === 'function' ? !!o.animating() : false;
       const lite = typeof o.lite === 'function' ? !!o.lite() : false;
-      const interval = animating ? o.activeMs : lite ? o.liteMs : o.ambientMs;
+      if (lite) {
+        const draw = dirty;
+        if (draw) {
+          dirty = false;
+          lastDraw = nowMs;
+        }
+        return { draw, mode: 'static' };
+      }
+      const interval = animating ? o.activeMs : o.ambientMs;
       const draw = dirty || nowMs >= lastDraw + interval;
       if (draw) {
         dirty = false;
         lastDraw = nowMs;
       }
-      return { draw, mode: animating ? 'active' : lite ? 'lite' : 'ambient' };
+      return { draw, mode: animating ? 'active' : 'ambient' };
     },
-    /* Frame-gap percentiles over the ring buffer; the loop measures itself. */
+    /* Frame-gap percentiles over the ring buffer; the loop measures itself.
+     * `samples` is the LIFETIME tick count (ring never saturates it). */
     stats() {
-      if (!count) return { samples: 0 };
+      const out = { samples: total };
+      if (!count) return out;
       const arr = Array.from(times.slice(0, count)).sort((a, b) => a - b);
       const q = (p) => arr[Math.min(arr.length - 1, Math.floor(p * arr.length))];
-      return { samples: arr.length, p50: q(0.5), p95: q(0.95), max: arr[arr.length - 1] };
+      out.p50 = q(0.5);
+      out.p95 = q(0.95);
+      out.max = arr[arr.length - 1];
+      return out;
     },
   };
 }

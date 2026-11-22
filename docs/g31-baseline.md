@@ -84,6 +84,54 @@ types outside the manifest's `types` registry are skipped client-side
 policy focused) with the full dashboard chrome (32-bit truecolor in chrome, art
 sprites untouched).
 
+## G32 review traps + exit criteria (2026-11-22, owner-reviewed boundaries)
+
+**ETag cache identity (trap 1):** mood is part of the scene revision — a CHO
+policy change yields a different ETag (tested: cached `If-None-Match` gets 200
+with the new policy after the config merge, never 304); scopes never share an
+ETag (tested). A 304 cannot surface a stale scene after an access-context
+change.
+
+**Deterministic placement (trap 2):** dense scenes (30 capabilities + 15
+projects + 8 ideas) place every chip in a unique cell; `_grid` resolves
+collisions by bumping rows in sorted-component order — the same organizational
+state produces the byte-identical manifest (tested). The office canvas overlay
+uses the same bounded layout (`layoutOverlay`, node-tested: 8 chips + one
+"+N more", deterministic, aggregates never render). Capability chips are
+bounded like everything else: 30 capabilities → 10 chips + one summary
+(tested); visible chips no longer grow with kind volume.
+
+**Scheduler ownership (trap 3):** the single rAF chain lives inside
+`office-render.js` `start()`; config/mode/theme changes only swap overlay data
+(`setOverlay`) — no second loop, no re-subscription (one onclick delegation on
+the scene root; `openSceneNode` reuses the graph cache). Measured: an
+independent rAF probe counted 48 callbacks/2 s while `framePolicy` counted
+**47 gameLoop ticks** in the same window — exactly one chain (the 1-off is the
+probe's head start). Instrumentation note: `stats().samples` is a LIFETIME
+tick counter (the ring only saturates the percentile window — the earlier
+"dead loop" reading was the cap, not a stopped chain; suite pins lifetime
+semantics with 300 ticks). A renderer defect can no longer kill the chain
+silently: the loop logs once and keeps scheduling.
+
+**Exit criteria measured (headless CDP, same stack):**
+
+| Criterion | Evidence |
+| --- | --- |
+| Baseline ≡ modular renderer | Office.draw/OfficeTile grew a target-ctx param (canvas callers unchanged); loop + env layer + overlay live in `office-render.js`; screenshot + draw behavior identical (roster/names/environment verified; loop draws ≈ every tick, no errors/none swallowed) |
+| Manifest updates touch only relevant components | scene view re-fetch → 304 skips re-render (client + route tested); office overlay chips come from one fetch per boot |
+| Zero idle frames, ambient disabled | `.pixel-lite`/reduced-motion = **static**: after the forced dirty frame, 0 draws over 1.5 s (and the earlier E-window confirmed only the forced frame) |
+| No runaway timers/loops | probe-vs-tick 48/47 over the same window; repeated switches change overlay data only |
+| Volume does not determine sprite count | 50 projects → 10 stations + summary; 30 capabilities → 10 chips + summary (tested) |
+| CHO navigation org → project → task evidence | scene chips are clickable (delegation); drill-down panel reuses the graph cache: org click → "organization Pixel Startup · Growing · outcome unknown"; recursion + evidence lines render per node (verified live on the org; full depth grows with the graph) |
+| Scope isolation | household vs company ETags differ; manifest scope echo tested; leak test from Phase 2 stands |
+| Zero LLM | asserted in both phase-3 route tests across scene reads, config merges and drill-down-related reads |
+
+**Feature flag:** `startup.scene_components` (no-erase merge accepts a
+boolean, tested with coexisting mood) drives the office canvas overlay —
+one scene fetch per boot, owner-session required (org data is owner-scoped;
+unauthenticated kiosk keeps the unflagged office), flag flip verified live
+(chips on + restored to `false` after the check).
+
 ## Dependency of Phase 2+ on this baseline
 
 G32-B targets from evidence: idle rAF full-redraw → dirty-layer/idle-stop;

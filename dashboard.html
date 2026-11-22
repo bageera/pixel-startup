@@ -252,6 +252,7 @@
                     <div class="flex-1"></div>
                     <button onclick="loadScene(true)" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold py-1.5 px-3 rounded transition-colors">Refresh</button>
                 </div>
+                <div id="sceneDetail" class="shrink-0 text-xs text-slate-400" style="display:none;"></div>
                 <div id="sceneViewport" class="flex-1 relative overflow-auto bg-[#0c0c16] border border-slate-700 rounded-lg">
                     <svg id="sceneSvg" width="100%" height="100%">
                         <g id="sceneRoot"></g>
@@ -572,18 +573,77 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
                     const h = 34;
                     const col = stateColor[c.health] || '#9e9e9e';
                     const att = c.attention && c.attention !== 'unknown' ? ' ⚑' : '';
+                    // G32-C: chips are clickable — CHO navigation org → project → evidence
                     chips.push(
+                        `<g class="scene-chip" data-ref="${esc2(c.ref)}" style="cursor:pointer;">` +
                         `<rect x="${c.x}" y="${c.y}" width="${w}" height="${h}" rx="6" fill="#111827" stroke="${col}" stroke-width="1.5"></rect>` +
                         `<text x="${c.x + 8}" y="${c.y + 14}" font-size="7" fill="#94a3b8">${esc2(c.type)}</text>` +
                         `<text x="${c.x + 8}" y="${c.y + 27}" font-size="10" fill="${col}">${esc2(String(c.label).slice(0, 22))}${att}</text>` +
-                        (typeof c.outcomes === 'number' ? `<text x="${c.x + w - 4}" y="${c.y + 27}" font-size="9" fill="#64748b" text-anchor="end">◆${c.outcomes}</text>` : '')
+                        (typeof c.outcomes === 'number' ? `<text x="${c.x + w - 4}" y="${c.y + 27}" font-size="9" fill="#64748b" text-anchor="end">◆${c.outcomes}</text>` : '') +
+                        `</g>`
                     );
                 }
                 document.getElementById('sceneMeta').textContent =
                     `scene ${m.schema_version} · ${m.policy} · ${m.theme} · rev ${m.scene_revision} · ${(m.components || []).length} components`;
                 root.innerHTML = chips.join('');
+                root.onclick = (ev) => {
+                    // delegation: one listener, no re-subscription churn on redraw
+                    const g = ev.target.closest && ev.target.closest('g.scene-chip');
+                    if (g && g.dataset.ref) openSceneNode(g.dataset.ref);
+                };
             } catch (e) {
                 root.innerHTML = '<text x="20" y="20" fill="#94a3b8" font-size="12">scene manifest unavailable (backend offline?)</text>';
+            }
+        }
+
+        /* G32-C navigation: organization → project → task evidence. Reuses the
+         * cached graph read (same ETag/304 path as the Living view). */
+        async function openSceneNode(ref) {
+            const box = document.getElementById('sceneDetail');
+            box.style.display = '';
+            const esc2 = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            try {
+                await loadGraph(); // cached; 304 short-circuits
+                const label = (t) => G30_STATE_LABEL[t] || t;
+                const stack = [{ id: ref, depth: 0 }];
+                const lines = [];
+                const edgesSeen = new Set();
+                while (stack.length) {
+                    const { id, depth } = stack.shift();
+                    const n = G30.nodes.find((x) => x.id === id);
+                    if (!n) continue;
+                    const v = n.views || {};
+                    // evidence: outcome records linked from completed children
+                    const done = G30.nodes.filter((x) => x.parent_id === id && (x.status === 'done' || x.verified));
+                    const evidence = G30.edges
+                        .filter((e) => (e.kind === 'evidence' && (e.from_id === id || done.some((d) => d.id === e.from_id))) && !edgesSeen.has(e.from_id + '|' + e.to_id))
+                        .map((e) => G30.nodes.find((x) => x.id === e.to_id))
+                        .filter(Boolean);
+                    evidence.forEach((o) => edgesSeen.add(o.id));
+                    const indent = '&nbsp;'.repeat(depth * 4);
+                    const link = depth < 3
+                        ? `<span class="scene-node" data-id="${id}" style="cursor:pointer;text-decoration:underline dotted;">${esc2(n.title)}</span>`
+                        : esc2(n.title);
+                    lines.push(
+                        `${indent}<span style="color:#7cb342">${esc2(n.kind)}</span> ${link}` +
+                        ` <span style="color:#64748b">· ${esc2(label(v.state || 'growing'))}` +
+                        ` · outcome ${esc2(v.outcome || 'unknown')}` +
+                        (typeof v.progress === 'number' ? ` · ${Math.round(v.progress * 100)}%` : '') + '</span>'
+                    );
+                    for (const o of evidence) {
+                        lines.push(`${indent}&nbsp;&nbsp;↳ <span style="color:#66bb6a">evidence:</span> ${esc2(o.title)} <span style="color:#64748b">(${esc2(o.kind)})</span>`);
+                    }
+                    const kids = G30.nodes.filter((x) => x.parent_id === id).sort((a, b) => a.id.localeCompare(b.id));
+                    for (const k of kids.reverse()) stack.unshift({ id: k.id, depth: depth + 1 });
+                }
+                box.innerHTML = lines.slice(0, 24).join('<br>') ||
+                    `<span style="color:#94a3b8">${esc2(ref)} — not present in the current scope graph</span>`;
+                box.onclick = (ev) => {
+                    const t = ev.target.closest('.scene-node');
+                    if (t && t.dataset.id) openSceneNode(t.dataset.id);
+                };
+            } catch (e) {
+                box.innerHTML = '<span style="color:#f87171">graph read failed — drill-down unavailable</span>';
             }
         }
 
