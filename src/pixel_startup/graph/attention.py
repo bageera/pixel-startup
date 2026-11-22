@@ -193,6 +193,13 @@ def dependency_impact(nodes: list[dict], edges: list[dict], today: date) -> dict
         for e in deps:
             blocked_by_id.setdefault(e["from_id"], []).append(blocker)
 
+    # build the reversed depends_on index ONCE — rebuilding it per blocker
+    # made dense graphs quadratic (O(blockers x edges)).
+    by_target: dict[str, list[str]] = {}
+    for e in edges:
+        if e["kind"] == "depends_on" and e["to_id"] not in resolved:
+            by_target.setdefault(e["to_id"], []).append(e["from_id"])
+
     summaries = []
     for blocker, deps in sorted(direct.items(), key=lambda kv: kv[0]):
         direct_ids = [e["from_id"] for e in deps]
@@ -200,10 +207,6 @@ def dependency_impact(nodes: list[dict], edges: list[dict], today: date) -> dict
         for nid in direct_ids:
             ancestors(nid, affected)
         # chained: nodes depending on any directly blocked node
-        by_target: dict[str, list[str]] = {}
-        for e in edges:
-            if e["kind"] == "depends_on" and e["to_id"] not in resolved:
-                by_target.setdefault(e["to_id"], []).append(e["from_id"])
         frontier, seen = list(direct_ids), set()
         while frontier:
             cur = frontier.pop()

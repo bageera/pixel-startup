@@ -823,3 +823,31 @@ syntax OK. **Verdict: PASS** against the owner's phase-3 boundaries and exit
 criteria. Remaining skips: stress tiers S2-S4 (G32-E), sustained profiling on
 a non-throttled 60 Hz display (headless VM rAF floor ~15 Hz), office overlay
 chip visual density at scale (bounded by layoutOverlay cap).
+
+### G32 Phase 4 — Economic qualification (G32-D/E/F)
+
+**G32-D budgets:** all nine spec rows measured into
+`docs/g32-resource-discipline.md` (static mode 0 idle draws; caps 30/10/5
+FPS; zero-LLM asserted; ETag-304 recompose skip; one-drawImage static layer;
+5.2–5.3 KB scene payloads at 22.6k–213k records; flat heap; server routes
+14–21 ms, 304 ≈20 ms on the dev VM). Six-cost separation recorded; no
+category hides a regression in another.
+
+**G32-E scaling:** deterministic tier fixtures (S1/S2/S3 in-suite, S4
+env-gated run) with sparse + dense + chained + cyclic shapes. Records ×~900
+(235→213k) leaves visible components FLAT at 33 and payload ~5 KB — the
+invariant holds by measured slope, not assertion. Backend honestly limited:
+compose O(n) single-pass, S4 ~1.1 s recompose. Two quadratic hotspots FIXED
+in attention/scene (per-blocker edge-index rebuild; per-iteration component
+rescan) taking S3 compose 1,715 → 93 ms. Cyclic input never hangs (tested);
+dense shared blocker surfaces once (268 shared at S2). Restart recovery
+verified live.
+
+**G32-F degradation:** no server-side lite fork (byte-equal manifests for all
+clients, tested); browser ladder drops animation → frequency → static while
+information (bounded chips, drill-down, textual Office Scene view) stays
+complete; never-degrade list holds (scope, evidence, attention, approvals).
+
+**Gates:** 189 pytest (5 new phase-4, S4 skip-gated) / 65 npm + 9 office-loop
+/ pyright 0 / ruff clean+fmt. **Verdict: PASS with honest ceilings** (real
+60 Hz profiling + concurrency soak deferred; recorded as skips).

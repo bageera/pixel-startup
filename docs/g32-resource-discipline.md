@@ -28,3 +28,66 @@ The same rule binds the office view (G31): idle inference stays zero, the render
 only animates when the scene is open and visible, and detail tiers must degrade
 before information fidelity does. G30/G32 infrastructure (health projection, policy,
 graph API with ETag) is the shared substrate for it.
+
+## Phase 4 — Economic qualification (G32-D/E/F), 2026-11-22
+
+**Test environment:** host macOS 26.6.2 (arm), Docker `pixel-startup:latest`
+(7a5815e build), Python 3.12 in image, pytest via host `.venv`, browser =
+harness headless Chrome (throttled VM, rAF floor ≈15 Hz — 60 Hz budgets are
+quoted per-cap math, not this floor). Numbers from
+`uv run pytest tests/test_g32_phase4.py -s` plus the curl/CDP runs recorded
+below; fixtures are deterministic synthetic tiers (fixed ids, fixed day).
+
+### G32-D — measured resource budgets
+
+| Budget (spec target) | Measured | Where |
+| --- | --- | --- |
+| Idle animation 0 FPS when disabled | static mode: 0 draws / 1.5 s after the dirty frame | CDP + node test |
+| Active ambient ≤ 15–30 FPS | caps 33/100/200 ms = ≤30/10/5 FPS; VM floor observed p50 83 ms | office-loop + CDP |
+| Rendering inference 0 LLM calls | asserted across scene/graph/config/drill-down reads | phase 3+4 suites |
+| Health projection inference 0 LLM | project_health/attention/scene_manifest: pure rows→dict | code + suite |
+| Recompose on meaningful change only | ETag: unchanged org → 304 (recompose skipped client-side) | phase-2/3 tests |
+| No repeated full-scene redraws | static env layer: 1 drawImage/draw, rebuilt only on background src change | phase 3 |
+| Network sync incremental/scoped | scene payload 5.2 KB @ 22.6k records (S3); 5.3 KB @ 213k (S4) | /api/v1/scene bytes |
+| Scene memory bounded | bounded chip layout (≤8 + "+N"), dashboard static SVG, heap flat | phase-3 CDP |
+| Visual update < 100 ms after data | routes: scene 13.6–21 ms, 304 ≈20 ms, graph 16–21 ms; paint ≤ one frame cap after arrival | curl medians ×5 (VM) |
+
+Cost separation: rendering = bounded browser work above; org projection =
+O(n) SQLite single-pass, S3 ≤ 93 ms; network = 304-empty / ≤5.3 KB; storage
+and audit = existing store, unchanged; harness execution = outside the scene
+path; LLM = 0 by test.
+
+### G32-E — scaling curve (records → visible components)
+
+| Tier | Records | Compose ms | Visible components | Payload bytes |
+| --- | --- | --- | --- | --- |
+| S1 | 235 | 2.5 | 26 | 4,175 |
+| S2 | 2,279 | 11.2 | 33 | 5,219 |
+| S3 | 22,612 | 86–93 | 33 | 5,243 |
+| S4 (env-gated run) | 213,052 | 1,072 | 33 | 5,303 |
+
+Records ×~900 → visible components flat at 33; payload ~5 KB. Fixture shapes:
+sparse deps, dense shared blocker (surfaced ONCE with an impact count — 268
+shared at S2), 10-deep chains, dormant + external masses, cyclic input
+(resolver returns, never spins). Two real quadratic hotspots found and fixed
+in-commit: per-iteration component rescan in the scene attention loop
+(scene.py) and the per-blocker by_target edge-index rebuild (attention.py) —
+S3 compose 1,715 → 93 ms. Honest limit: compose is O(nodes+edges) single-pass;
+S4 (~213k records) costs ~1.1 s per recompose — acceptable for rare
+CHO-driven recomposes; add a version-keyed cache if S4 recomposes get
+frequent. Backend restart recovery verified live (make restart → healthz →
+client 200/304 refetch).
+
+### G32-F — degradation order evidence
+
+Server truth has no lite fork: degraded clients fetch the SAME manifest
+(tested byte-equal). Browser ladder (office-loop/CSS) drops, in order:
+ambient animation → redraw frequency (lite 200 ms) → full redraws (static,
+dirty-only) — information surfaces stay complete (bounded chips + drill-down
++ the dashboard's Office Scene textual view, verified live). Never degraded:
+scope isolation, attention/evidence fields in the manifest (tested), CHO
+approval routes.
+
+**Skips (honest):** sustained profiling on a non-throttled 60 Hz display
+(VM floor ≈15 Hz); multi-client concurrency soak; S4 in the default suite
+(minutes-scale; PIXEL_STRESS_S4=1). Add when a real deployment profile exists.

@@ -207,12 +207,14 @@ def scene_manifest(
             )
 
     # attention components: what literally needs the CHO today (bounded)
+    attention_n = len([c for c in components if c["type"] == "attention"])
     for n in sorted(nodes, key=lambda x: x["id"]):
-        if len([c for c in components if c["type"] == "attention"]) >= ATTENTION_CAP:
+        if attention_n >= ATTENTION_CAP:  # bounded: no per-iteration rescan
             break
         act = attention(n, today)
         if not act["requires_action"]:
             continue
+        attention_n += 1
         x, y = _grid(n["id"], 4, taken)
         components.append(
             {
