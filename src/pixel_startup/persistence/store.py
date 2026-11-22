@@ -565,6 +565,11 @@ class GraphStore:
         "project": {"idea", "goal"},
         "milestone": {"project"},
         "task": {"project", "milestone"},
+        "decision": {"organization", "project", "goal"},
+        "commitment": {"organization", "project", "task", "idea"},
+        "contact": {"organization"},
+        "capability": {"organization", "project"},
+        "outcome": {"milestone", "task", "project", "commitment"},
     }
 
     def __init__(self, db: Database) -> None:
@@ -619,8 +624,8 @@ class GraphStore:
         try:
             self.db.conn.execute(
                 "INSERT INTO graph_nodes (id, kind, title, status, parent_id, priority,"
-                " due_at, cadence, verified, scope, detail, created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " due_at, cadence, verified, scope, owner_role, detail, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     node_id,
                     kind,
@@ -632,6 +637,7 @@ class GraphStore:
                     payload.get("cadence"),
                     0,
                     scope,
+                    payload.get("owner_role"),
                     payload.get("detail"),
                     ts,
                     ts,
@@ -650,7 +656,7 @@ class GraphStore:
         if row is None:
             raise ValueError(f"node {node_id} not found")
         row = dict(row)
-        allowed = ("title", "status", "priority", "due_at", "cadence", "detail")
+        allowed = ("title", "status", "priority", "due_at", "cadence", "detail", "owner_role")
         sets: list[str] = []
         args: list[object] = []
         for field in allowed:
@@ -664,6 +670,15 @@ class GraphStore:
                         raise ValueError("priority must be 1-5")
                 if field == "title" and not str(value or "").strip():
                     raise ValueError("title cannot be empty")
+                if field == "owner_role" and value not in (
+                    "cho",
+                    "employee",
+                    "client",
+                    "vendor",
+                    "external",
+                    None,
+                ):
+                    raise ValueError(f"unsupported owner_role: {value}")
                 setattr_row = field
                 sets.append(f"{setattr_row} = ?")
                 args.append(value)
@@ -697,7 +712,7 @@ class GraphStore:
         return node
 
     def add_edge(self, from_id: str, to_id: str, kind: str) -> dict:
-        if kind not in ("depends_on", "related", "evidence"):
+        if kind not in ("depends_on", "related", "evidence", "soft_depends"):
             raise ValueError(f"unsupported edge kind: {kind}")
         a, b = self.get(from_id), self.get(to_id)
         if a is None or b is None:

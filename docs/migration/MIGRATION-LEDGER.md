@@ -654,3 +654,39 @@ Eligibility: independent of live integrations; depends on nothing else. Structur
 - G32 degradation: `prefers-reduced-motion` + `hardwareConcurrency/deviceMemory` → `.pixel-lite` (animation/filters off; information fidelity preserved; dashboard = always-available lightweight view).
 
 **Gates:** 171 pytest (12 new G30/G32) / 65 npm / pyright 0 / ruff clean. **Verdict: PASS** (component qualification; G31 office-loop obligations recorded in docs/g32-resource-discipline.md).
+
+## G31 Phase 1 — census + truth model + attention + dependency impact (G31-A..D)
+
+**Baseline (G31-A):** docs/g31-baseline.md — census table + measured numbers
+(office: 16fps idle rAF w/ full redraw, heap 13.2MB, 23 req/56KB, 1 canvas 2d,
+5 intervals; graph GET 21–55ms; impact route live). No functional changes.
+
+**Schema v7 (G31-B):** graph vocabulary extended (decision/commitment/contact/
+capability/outcome), `owner_role` column (cho/employee/client/vendor/external),
+edge kind `soft_depends`; rebuild-from-staging migration preserves rows
+(tested: v6 db → migrate → rows intact incl. FKs). Stable ids + scope +
+provenance carried from G30 (created_at/updated_at/verified/detail).
+
+**Fact/Policy/Derived/Suggestion separation (G31-B):** facts = stored rows;
+policies = CHO `startup.mood` + edge semantics + followup policies in
+`detail`; derived = health.py/attention.py projections; suggestions are NOT
+modeled yet (none generated — nothing can present a suggestion as a fact).
+Unknown = explicit `unknown` attention state.
+
+**Attention engine (G31-C):** `attention(node, today)` — identical elapsed
+time yields different states by owner: CHO/employee overdue → actionable-overdue;
+client/vendor/external silence → `waiting` (never overdue); explicit followup
+policy in `detail` ("days" or business_days Mon–Fri) flips to a follow-up
+opportunity at threshold (still not overdue); paused → dormant; done → resolved;
+missing data → unknown. Tested both directions incl. business-day arithmetic.
+
+**Dependency impact (G31-D):** `dependency_impact()` + `GET /api/v1/graph/impact`
+— actually blocked (hard depends_on), potentially affected (parent chains +
+chained depends_on), scheduling risks (soft) are SEPARATE outputs; a shared
+blocker surfaces ONCE with its count (20 tasks → 1 decision entry); resolution
+recomputes; cycles/self-edges refused at creation; scope isolation enforced.
+
+**Gates:** 175 pytest / 65 npm / pyright 0 / ruff clean. **Verdict: PASS** for
+G31-A/B/C/D. Honest skips: responsibility model covers graph-recorded
+commitments (chat/email transports are G31 later / harness-owned); no
+suggestion surface yet; time-zone handling = local date (single-org host).

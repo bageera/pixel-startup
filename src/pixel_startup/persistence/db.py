@@ -172,6 +172,54 @@ MIGRATIONS: dict[int, list[str]] = {
         "CREATE INDEX IF NOT EXISTS ix_graph_nodes_parent ON graph_nodes(parent_id)",
         "CREATE INDEX IF NOT EXISTS ix_graph_edges_to ON graph_edges(to_id)",
     ],
+    7: [
+        # G31-B/C/D: extend the graph vocabulary. SQLite cannot ALTER a CHECK,
+        # so the two graph tables are rebuilt from staging copies (deterministic;
+        # edges dropped before nodes so FK enforcement is never violated).
+        "CREATE TABLE graph_nodes_stage AS SELECT * FROM graph_nodes",
+        "CREATE TABLE graph_edges_stage AS SELECT * FROM graph_edges",
+        "DROP TABLE graph_edges",
+        "DROP TABLE graph_nodes",
+        """CREATE TABLE IF NOT EXISTS graph_nodes (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL CHECK (kind IN
+                ('organization','goal','idea','project','milestone','task',
+                 'decision','commitment','contact','capability','outcome')),
+            title TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active','paused','done','archived')),
+            parent_id TEXT REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            priority INTEGER NOT NULL DEFAULT 2 CHECK (priority BETWEEN 1 AND 5),
+            due_at TEXT,
+            cadence TEXT,
+            verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0,1)),
+            scope TEXT NOT NULL DEFAULT 'company' CHECK (scope IN ('company','household')),
+            owner_role TEXT CHECK (owner_role IN
+                ('cho','employee','client','vendor','external')),
+            detail TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS graph_edges (
+            id TEXT PRIMARY KEY,
+            from_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            to_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL CHECK (kind IN ('depends_on','related','evidence','soft_depends')),
+            created_at TEXT NOT NULL,
+            UNIQUE (from_id, to_id, kind)
+        )""",
+        """INSERT INTO graph_nodes (id, kind, title, status, parent_id, priority,
+             due_at, cadence, verified, scope, detail, created_at, updated_at)
+           SELECT id, kind, title, status, parent_id, priority,
+             due_at, cadence, verified, scope, detail, created_at, updated_at
+           FROM graph_nodes_stage""",
+        """INSERT INTO graph_edges (id, from_id, to_id, kind, created_at)
+           SELECT id, from_id, to_id, kind, created_at FROM graph_edges_stage""",
+        "DROP TABLE graph_nodes_stage",
+        "DROP TABLE graph_edges_stage",
+        "CREATE INDEX IF NOT EXISTS ix_graph_nodes_parent ON graph_nodes(parent_id)",
+        "CREATE INDEX IF NOT EXISTS ix_graph_edges_to ON graph_edges(to_id)",
+    ],
 }
 
 EMPLOYEE_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {

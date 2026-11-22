@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
 
 from pixel_startup.api.config_v1 import office_from_app, office_write_auth
+from pixel_startup.graph.attention import attention, dependency_impact
 from pixel_startup.graph.health import STATES, project_health
 from pixel_startup.security.auth import require_auth
 
@@ -63,11 +64,28 @@ async def _snapshot_response(request: Request, scope: str, if_none_match: str | 
             "scope": scope,
             "policy": policy,
             "states": list(STATES),
-            "nodes": [{**n, "views": projection["nodes"].get(n["id"])} for n in nodes],
+            "nodes": [
+                {
+                    **n,
+                    "views": projection["nodes"].get(n["id"]),
+                    "attention": attention(n, date.today()),
+                }
+                for n in nodes
+            ],
             "edges": edges,
         },
         headers={"ETag": etag},
     )
+
+
+@router.get("/api/v1/graph/impact")
+async def get_impact(
+    request: Request, scope: str = "company", _auth: str = Depends(require_auth)
+) -> dict:
+    """G31-D: shared blockers surfaced once, with distinct blocked/affected/risks."""
+    store = _graph(request)
+    nodes, edges = store.list(scope)
+    return dependency_impact(nodes, edges, date.today())
 
 
 @router.get("/api/v1/graph")
@@ -81,13 +99,14 @@ async def get_graph(
 
 
 class GraphNodeIn(BaseModel):
-    kind: str = Field(..., description="goal|idea|project|milestone|task")
+    kind: str = Field(..., description="typed org node kind (see graph KIND_PARENTS)")
     title: str
     parent_id: str | None = None
     priority: int | None = None
     due_at: str | None = None
     cadence: str | None = None
     detail: str | None = None
+    owner_role: str | None = Field(None, description="cho|employee|client|vendor|external")
     scope: str | None = Field(None, description="company (default) | household")
 
 
