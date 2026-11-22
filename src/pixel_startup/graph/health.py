@@ -81,7 +81,8 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
             return {
                 "state": "needs-attention",
                 "progress": 0.0,
-                "explanation": f"Blocked by: {', '.join(deps)} — cannot progress until it is done or verified.",
+                "explanation": f"Blocked by: {', '.join(deps)} —"
+                " cannot progress until it is done or verified.",
             }
         if kids or n["kind"] not in ("task", "milestone"):
             return None  # containers flow into child aggregation (or seed branch)
@@ -96,7 +97,7 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
             return {
                 "state": "thriving",
                 "progress": 1.0,
-                "explanation": "Verified milestone: proven progress (never an inference of success).",
+                "explanation": "Verified milestone: proven progress, not an inference.",
             }
         if n["status"] == "done":
             return {
@@ -116,7 +117,7 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
             return {
                 "state": "needs-attention",
                 "progress": 0.0,
-                "explanation": f"Behind cadence: {n['cadence']} verified progress expected, none registered yet.",
+                "explanation": f"Behind cadence: {n['cadence']} expected; none registered yet.",
             }
         if n.get("due_at"):
             return {
@@ -160,8 +161,7 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
                 return {
                     "state": "seed",
                     "progress": 0.0,
-                    "explanation": "Seed: an idea without an agreed schedule — grows when a project,"
-                    " deadline or cadence is attached. It does not rot on its own.",
+                    "explanation": "Seed: schedule-free — never rots; grows when work attaches.",
                 }
             if n["kind"] == "goal":
                 return {
@@ -184,7 +184,7 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
             return {
                 "state": "completed",
                 "progress": 1.0,
-                "explanation": f"Completed: all {len(subs)} children done or verified. Completed work never rots.",
+                "explanation": f"Completed: all {len(subs)} children done or verified. Never rots.",
             }
         worst = max(act, key=lambda s: _WORST.get(s["state"], 0), default=None)
         if worst is None:

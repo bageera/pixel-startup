@@ -57,6 +57,8 @@
             opacity: 1 !important;
         }
         
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+.pixel-lite *, .pixel-lite *::before, .pixel-lite *::after { animation: none !important; transition: none !important; filter: none !important; }
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -157,7 +159,10 @@
 
         // restore G28 HUD state at boot
         if (localStorage.getItem('pixel_hud_hidden') === '1') {
-            window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').classList.add('hud-hidden'));
+            // G32 graceful degradation: resource-constrained devices drop animation/effects
+if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (navigator.deviceMemory && navigator.deviceMemory <= 2))
+  document.documentElement.classList.add('pixel-lite');
+window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').classList.add('hud-hidden'));
         }
     </script>
 </head>

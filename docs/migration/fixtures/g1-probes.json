@@ -458,7 +458,7 @@
           },
           "runtime": "string",
           "sessions": {
-            "array": 2,
+            "array": 1,
             "of": {
               "pid": "number",
               "session_id": "string",

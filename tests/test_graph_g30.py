@@ -70,7 +70,7 @@ def test_g30_g1_to_10_lifecycle(tmp_path) -> None:
             snap = (await c.get("/api/v1/graph", headers=AUTH)).json()
             view = next(n for n in snap["nodes"] if n["id"] == idea["id"])
             assert view["views"]["state"] == "seed"
-            assert "does not rot" in view["views"]["explanation"]
+            assert "never rots" in view["views"]["explanation"]
 
             # 2. related ideas form stable branches (idempotent edges)
             idea2 = await _seed_idea(c, "Second idea")
@@ -415,3 +415,39 @@ def test_g30_g6_to_7_paused_completed_never_rot_pure() -> None:
     ]
     h3 = project_health(all_done, [], TODAY)["nodes"]
     assert h3["p1"]["state"] == "completed"
+
+
+def test_g32_network_incremental_and_bounds(tmp_path) -> None:
+    async def drive():
+        async with client(tmp_path) as (c, app, llm):
+            # first read: full body + etag
+            r1 = await c.get("/api/v1/graph", headers=AUTH)
+            etag = r1.headers["ETag"]
+            assert etag.startswith('W/"')
+            # unchanged state: 304 instead of a full download (G32 network row)
+            r2 = await c.get("/api/v1/graph", headers={**AUTH, "If-None-Match": etag})
+            assert r2.status_code == 304
+            assert r2.headers["ETag"] == etag
+            # state change (a node write) -> new etag, full body again
+            await _seed_idea(c, "G32 seed")
+            r3 = await c.get("/api/v1/graph", headers={**AUTH, "If-None-Match": etag})
+            assert r3.status_code == 200 and r3.headers["ETag"] != etag
+            # household state changes never invalidate the company etag
+            await c.post(
+                "/api/v1/graph/nodes",
+                headers=AUTH,
+                json={"kind": "idea", "title": "household", "scope": "household"},
+            )
+            r4 = await c.post(
+                "/api/v1/graph/nodes", headers=AUTH, json={"kind": "idea", "title": "company2"}
+            )
+            assert r4.status_code == 201
+            # household refresh: the company etag must NOT be invalidated by it
+            r6 = await c.get(
+                "/api/v1/graph?scope=company", headers={**AUTH, "If-None-Match": r3.headers["ETag"]}
+            )
+            assert r6.status_code == 200 and r6.headers["ETag"] != r3.headers["ETag"]
+            # 15 (again): graph reads never invoke the model
+            assert llm == []
+
+    anyio.run(drive)

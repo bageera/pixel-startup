@@ -641,3 +641,16 @@ Eligibility: independent of live integrations; depends on nothing else. Structur
 - G18/G19/G20 execute after G8+G12+G13 (needed load profile + packaging).
 - G21 workflows classified per final evidence.
 
+
+## G30+G32 — Living Startup environment (organization graph, deterministic health, resource discipline)
+
+**Shipped (local commit e75e994 + G32 follow-up, no push/deploy):**
+- Schema v6: `graph_nodes` (typed: organization/goal/idea/project/milestone/task; status active/paused/done/archived; priority 1-5, due_at, cadence, verified, scope company|household; stable ids `<kind>-<uuid12>`) + `graph_edges` (depends_on/related/evidence; UNIQUE from/to/kind = re-link never duplicates).
+- `GraphStore`: parent-kind ladder, child inherits scope (cross-scope parenting refused — structural isolation), idempotent edges, depends_on cycle guard (DFS on the from→to closure), honest no-op patch returns current row.
+- `graph/health.py`: pure projection (rows + injected `today` only). Rules: seed (schedule-free idea, never decays) / growing / thriving (verified) / needs-attention (blocked — names the dependency — or behind cadence) / withering (overdue actionable) / dormant (paused) / completed (never rots) / archived. Cadence "N/wk" counts only after an elapsed week. No commercial-success inference.
+- `/api/v1/graph` (GET auth; mutations office-write): full snapshot + G32 ETag (state summary; If-None-Match → 304 — tested 304/new-etag/invalidation boundaries). Zero LLM calls asserted twice in the suite.
+- Dashboard "Living Startup" tab (lazy): SVG mind map, pan/zoom/drag, collapse persisted, detail panel (state/explanation/progress/deps), stalled list, plant-seed, connect-related, CHO mood from `startup.mood` (curious/focused/driven — invalid saves keep the previous valid value).
+- Sprites: 8 × 16×16 shape-distinct PNGs (color-blind-safe by construction), deterministic generator with `--check`.
+- G32 degradation: `prefers-reduced-motion` + `hardwareConcurrency/deviceMemory` → `.pixel-lite` (animation/filters off; information fidelity preserved; dashboard = always-available lightweight view).
+
+**Gates:** 171 pytest (12 new G30/G32) / 65 npm / pyright 0 / ruff clean. **Verdict: PASS** (component qualification; G31 office-loop obligations recorded in docs/g32-resource-discipline.md).

@@ -118,6 +118,8 @@
         }
         #backendStrip .svc b { color: var(--text); font-weight: 600; }
         #backendStrip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; box-shadow: 0 0 8px currentColor; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+.pixel-lite *, .pixel-lite *::before, .pixel-lite *::after { animation: none !important; transition: none !important; filter: none !important; }
     </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen flex flex-col font-sans relative">
@@ -370,6 +372,9 @@
 
 
     <script>
+// G32 graceful degradation: resource-constrained devices drop animation/effects
+if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (navigator.deviceMemory && navigator.deviceMemory <= 2))
+  document.documentElement.classList.add('pixel-lite');
         // CONFIG CONSTANTS  (Using map size from index)
         const COLS = 20;
         const ROWS = 25;
@@ -513,7 +518,7 @@
         // === G30: Living Startup mind map (deterministic, no model calls) ======
         const G30_ICON = 'assets/health/%s.png';
         const G30_STATE_LABEL = { 'seed': 'Seed', 'growing': 'Growing', 'thriving': 'Thriving', 'needs-attention': 'Needs attention', 'withering': 'Withering', 'dormant': 'Dormant', 'completed': 'Completed', 'archived': 'Archived' };
-        let G30 = { loaded: false, nodes: [], edges: [], collapsed: new Set(JSON.parse(localStorage.getItem('pixel_graph_collapsed') || '[]')), pos: JSON.parse(localStorage.getItem('pixel_graph_pos') || '{}'), selected: null };
+        let G30 = { loaded: false, etag: null, nodes: [], edges: [], collapsed: new Set(JSON.parse(localStorage.getItem('pixel_graph_collapsed') || '[]')), pos: JSON.parse(localStorage.getItem('pixel_graph_pos') || '{}'), selected: null };
 
         async function openLivingView() {
             if (!G30.loaded) { await loadGraph(); buildGraphInteractions(); }
@@ -522,11 +527,16 @@
 
         async function loadGraph(notify) {
             try {
-                const r = await fetchApi('GET', '/api/v1/graph?scope=company', null);
-                if (!r) throw new Error('graph unavailable');
-                G30.nodes = r.nodes || [];
-                G30.edges = r.edges || [];
-                G30.policy = r.policy || 'focused';
+                // G32 network: If-None-Match — unchanged state costs a 304, no re-render
+                const r = await fetch('/api/v1/graph?scope=company', { headers: G30.etag ? { 'If-None-Match': G30.etag } : {} });
+                if (r.status === 304) return;
+                if (!r.ok) throw new Error('graph unavailable');
+                const etag = r.headers.get('ETag');
+                const j = await r.json();
+                G30.etag = etag;
+                G30.nodes = j.nodes || [];
+                G30.edges = j.edges || [];
+                G30.policy = j.policy || 'focused';
                 document.getElementById('livingPolicy').textContent = 'CHO policy: ' + G30.policy + ' · ' + (G30.policy === 'curious' ? 'idea discovery' : G30.policy === 'driven' ? 'outcomes & bottlenecks' : 'projects & execution');
                 G30.loaded = true;
                 renderGraph();

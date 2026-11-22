@@ -8,8 +8,9 @@ config, surfaced here for the frontend ordering — not a separate model.
 from __future__ import annotations
 
 from datetime import date
+from hashlib import md5
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
 
 from pixel_startup.api.config_v1 import office_from_app, office_write_auth
@@ -35,26 +36,48 @@ def _mood(request: Request) -> str:
     return mood if mood in ("curious", "focused", "driven") else "focused"
 
 
-def _snapshot(request: Request, scope: str) -> dict:
+def _etag(nodes: list[dict], scope: str, policy: str) -> str:
+    # G32 (network): the etag summarizes STATE, not payload — same state, same
+    # tag, so an unchanged graph costs a 304 instead of a full download.
+    max_updated = max((n["updated_at"] for n in nodes), default="")
+    seed = f"{scope}|{policy}|{len(nodes)}|{max_updated}"
+    return 'W/"%s"' % md5(seed.encode()).hexdigest()[:16]
+
+
+async def _snapshot_response(request: Request, scope: str, if_none_match: str | None):
     if scope not in ("company", "household"):
-        raise ValueError("scope must be company or household")
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="scope must be company or household")
     store = _graph(request)
     nodes, edges = store.list(scope)
+    policy = _mood(request)  # G30-F: view preference, not a data model
+    etag = _etag(nodes, scope, policy)
+    if if_none_match and etag in if_none_match:
+        return Response(status_code=304, headers={"ETag": etag})
     projection = project_health(nodes, edges, date.today())
-    return {
-        "scope": scope,
-        "policy": _mood(request),  # G30-F: view preference, not a data model
-        "states": list(STATES),
-        "nodes": [{**n, "views": projection["nodes"].get(n["id"])} for n in nodes],
-        "edges": edges,
-    }
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        {
+            "scope": scope,
+            "policy": policy,
+            "states": list(STATES),
+            "nodes": [{**n, "views": projection["nodes"].get(n["id"])} for n in nodes],
+            "edges": edges,
+        },
+        headers={"ETag": etag},
+    )
 
 
 @router.get("/api/v1/graph")
 async def get_graph(
-    request: Request, scope: str = "company", _auth: str = Depends(require_auth)
-) -> dict:
-    return _snapshot(request, scope)
+    request: Request,
+    scope: str = "company",
+    if_none_match: str | None = Header(None),
+    _auth: str = Depends(require_auth),
+):
+    return await _snapshot_response(request, scope, if_none_match)
 
 
 class GraphNodeIn(BaseModel):
