@@ -45,7 +45,6 @@ def scene_manifest(
     assert mood in MODES, f"unsupported CHO mode: {mood}"
     health = project_health(nodes, edges, today)["nodes"]
     proj = dependency_impact(nodes, edges, today)
-    titles = {n["id"]: n["title"] for n in nodes}
     components: list[dict] = []
     by_node = {n["id"]: n for n in nodes}
 

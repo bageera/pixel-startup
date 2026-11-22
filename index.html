@@ -61,6 +61,7 @@
 .pixel-lite *, .pixel-lite *::before, .pixel-lite *::after { animation: none !important; transition: none !important; filter: none !important; }
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="assets/office-loop.js"></script>
     <script>
         // === i18n (EN/ES). Keys below; static markup uses data-i18n / data-i18n-ph / data-i18n-title.
         const I18N = {
@@ -1346,8 +1347,30 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
 
 
 
+        // G32-B frame policy: full redraw only when it has a reason
+        const framePolicy = PixelLoop.createFramePolicy({
+            ambientMs: 100,
+            activeMs: 33,
+            liteMs: 200,
+            animating: () => (window.characters || []).some(c => c.path && c.path.length > 0),
+            lite: () => document.documentElement.classList.contains('pixel-lite')
+                || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        });
+
         // Loop principal
-        function gameLoop() {
+        function gameLoop(nowMs) {
+            const tick = typeof nowMs === 'number' ? nowMs : performance.now();
+            framePolicy.noteFrame(tick);
+            const decision = framePolicy.decide(tick);
+            // Cosmetic logic (targets, frames) keeps its original per-tick cadence;
+            // only the CANVAS redraw is capped by the policy.
+            if (window.simulationStarted && window.characters) {
+                characters.forEach(char => char.update());
+            }
+            if (!decision.draw) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
             if (!window.simulationStarted) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 office.draw(spriteManager);
@@ -1371,11 +1394,9 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                 return;
             }
         // Clear canvas (fondo general oscuro)
+            window.__pixelDraws = (window.__pixelDraws || 0) + 1; // G32-B evidence counter
             ctx.fillStyle = '#1e1e2e';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Refresh todos los personajes
-            characters.forEach(char => char.update());
 
             // Dibujar oficina
             office.draw(spriteManager);

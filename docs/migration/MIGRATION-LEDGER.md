@@ -732,3 +732,41 @@ integration is Phase 3).
 65 npm / pyright 0 / ruff clean+fmt. **Verdict: PASS** for G31-E/F/G.
 Remaining honest skips: scene route renderer integration + bounded rendering
 (Phase 3); stress tiers S2-S4 (G32-E).
+
+### G32 Phase 3 — office frame policy + bounded scene view
+
+**G32-B (renderer modularization + scheduler):** `assets/office-loop.js`
+(CommonJS for the suite, `window.PixelLoop` for the page) carries the frame
+policy — full canvas redraw only at the active cap (33 ms, character actually
+traveling), otherwise the ambient cap (100 ms cosmetic wander), and the lite
+cap (200 ms) under `.pixel-lite`/`prefers-reduced-motion`; a `dirty` flag
+forces redraws on demand. Cosmetic `update()` logic keeps its original per-tick
+cadence (movement speed unchanged); only the canvas redraw is capped.
+`framePolicy.stats()` ring-buffers the last 240 rAF gaps (p50/p95/max) and
+`window.__pixelDraws` counts actual redraws for evidence. Measured over CDP
+(same stack, headless rAF ≈15 Hz): idle full redraws 32 per 2 s (G31-A
+baseline, every tick) → **14 per 2 s**; walking still draws every tick (the
+33 ms cap sits below this VM's tick floor); heap unchanged. On a real 60 Hz
+browser: walking ≤30 fps, ambient ≤10 fps, lite ≤5 fps (vs 60 fps before).
+One defect found live and fixed: the CommonJS export crashed the browser
+script (`module` undefined) — UMD-style guarded export; regression asserted.
+
+**G32-C (hierarchical bounded view):** dashboard "Office Scene" tab renders
+`GET /api/v1/scene` (schema v1, state ETag + 304, live-verified session)
+as static SVG chips — no canvas, no timers, redraw only on fetch. Components
+without `ref` (aggregates) and types outside the manifest's `types` registry
+are skipped client-side per the G31-G fallback contract. Verified visually
+in Chrome with an owner session minted locally (`create_session_cookie`,
+verified via `verify_session_cookie`, curl'd against `/api/v1/scene` → 200):
+scene 1 · focused · office · rev 0a3b9f5f2788e4fa · 1 components; office
+canvas re-verified visually under the capped loop (roster, names, environment
+intact). ruff F841 leftovers from Phase 2 cleaned (scene.py, phase-2 tests).
+
+**Gates:** 180 pytest / node suite 65 passed + office-loop 7 asserts PASSED /
+pyright 0 / ruff clean+fmt / live CDP measurements recorded in
+docs/g31-baseline.md; docs/g32-resource-discipline.md CPU/GPU/network rows
+updated to DONE (office). **Verdict: PASS** (G32-A/B/C).
+Remaining honest skips: stress tiers S2-S4 (G32-E), sustained frame-time
+profiling on a non-throttled display (this VM's rAF floor is 15 Hz), and the
+delta/patch protocol (STILL refused — 304 remains the incremental mechanism
+until payload size is measured as a problem).

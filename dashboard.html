@@ -189,6 +189,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 10.06"></path><path d="M14 12l6 8"></path><path d="M8.9 13.94L20 20"></path></svg>
                     Living Startup
                 </button>
+                <button onclick="switchTab('scene')" id="tabBtnScene" class="py-3 px-2 text-sm font-bold tab-inactive flex items-center gap-2 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 12h10M12 7v10"></path></svg>
+                    Office Scene
+                </button>
             </div>
         </div>
 
@@ -240,7 +244,21 @@
                     </div>
                 </div>
             </div>
-        
+
+            <!-- VIEW: OFFICE SCENE (G32-C — bounded manifest view, SVG, no canvas, redraw only on fetch) -->
+            <div id="viewScene" class="absolute inset-0 hidden flex-col w-full max-w-7xl mx-auto p-4 gap-3">
+                <div class="flex items-center gap-3 shrink-0">
+                    <span id="sceneMeta" class="text-xs text-slate-400">scene: —</span>
+                    <div class="flex-1"></div>
+                    <button onclick="loadScene(true)" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold py-1.5 px-3 rounded transition-colors">Refresh</button>
+                </div>
+                <div id="sceneViewport" class="flex-1 relative overflow-auto bg-[#0c0c16] border border-slate-700 rounded-lg">
+                    <svg id="sceneSvg" width="100%" height="100%">
+                        <g id="sceneRoot"></g>
+                    </svg>
+                </div>
+            </div>
+
             <!-- VIEW: CHARACTERS -->
             <div id="viewChars" class="absolute inset-0 p-6 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col">
 
@@ -494,6 +512,8 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
             // Hide all views
             vChars.classList.add('hidden');
             vMap.classList.add('hidden');
+            document.getElementById('viewLiving').classList.add('hidden');
+            document.getElementById('viewScene').classList.add('hidden');
             
             // Reset all buttons
             bChars.className = "py-3 px-2 text-sm font-bold tab-inactive flex items-center gap-2 transition-colors";
@@ -512,6 +532,12 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
                 vLiving.classList.remove('hidden');
                 document.getElementById('tabBtnLiving').className = "py-3 px-2 text-sm font-bold tab-active flex items-center gap-2 transition-colors";
                 openLivingView();
+            } else if (t === 'scene') {
+                // G32-C: bounded scene — server manifest is the only data source
+                const vScene = document.getElementById('viewScene');
+                vScene.classList.remove('hidden');
+                document.getElementById('tabBtnScene').className = "py-3 px-2 text-sm font-bold tab-active flex items-center gap-2 transition-colors";
+                openSceneView();
             }
         }
 
@@ -519,6 +545,47 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
         const G30_ICON = 'assets/health/%s.png';
         const G30_STATE_LABEL = { 'seed': 'Seed', 'growing': 'Growing', 'stable': 'Stable', 'thriving': 'Thriving', 'needs-attention': 'Needs attention', 'withering': 'Withering', 'blocked': 'Blocked', 'waiting-external': 'Waiting external', 'dormant': 'Dormant', 'recovering': 'Recovering', 'completed': 'Completed', 'archived': 'Archived', 'unknown': 'Unknown' };
         let G30 = { loaded: false, etag: null, nodes: [], edges: [], collapsed: new Set(JSON.parse(localStorage.getItem('pixel_graph_collapsed') || '[]')), pos: JSON.parse(localStorage.getItem('pixel_graph_pos') || '{}'), selected: null };
+
+        // === G32-C: bounded office scene (server manifest, no canvas, no timers)
+        let SCENE = { etag: null };
+
+        async function openSceneView() { await loadScene(); }
+
+        async function loadScene(force) {
+            const root = document.getElementById('sceneRoot');
+            try {
+                // same ETag/304 discipline as the graph — unchanged scene costs nothing
+                if (force) SCENE.etag = null;
+                const r = await fetch('/api/v1/scene?scope=company', SCENE.etag ? { headers: { 'If-None-Match': SCENE.etag } } : {});
+                if (r.status === 304) return;
+                if (!r.ok) throw new Error('scene unavailable');
+                SCENE.etag = r.headers.get('ETag');
+                const m = await r.json();
+                const stateColor = { 'seed': '#8d6e63', 'growing': '#7cb342', 'stable': '#f59e0b', 'thriving': '#66bb6a', 'needs-attention': '#ffb300', 'withering': '#bf360c', 'blocked': '#9575cd', 'waiting-external': '#26c6da', 'dormant': '#78909c', 'recovering': '#ffe0b2', 'completed': '#2e7d32', 'archived': '#616161', 'unknown': '#9e9e9e' };
+                const esc2 = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+                const chips = [];
+                for (const c of m.components || []) {
+                    // G31-G contract: components without ref are aggregates; unknown
+                    // types are skipped client-side (schema registry rules)
+                    if (!c.ref || !m.types || !m.types.includes(c.type)) continue;
+                    const w = c.type === 'station' || c.type === 'decision' ? 180 : 120;
+                    const h = 34;
+                    const col = stateColor[c.health] || '#9e9e9e';
+                    const att = c.attention && c.attention !== 'unknown' ? ' ⚑' : '';
+                    chips.push(
+                        `<rect x="${c.x}" y="${c.y}" width="${w}" height="${h}" rx="6" fill="#111827" stroke="${col}" stroke-width="1.5"></rect>` +
+                        `<text x="${c.x + 8}" y="${c.y + 14}" font-size="7" fill="#94a3b8">${esc2(c.type)}</text>` +
+                        `<text x="${c.x + 8}" y="${c.y + 27}" font-size="10" fill="${col}">${esc2(String(c.label).slice(0, 22))}${att}</text>` +
+                        (typeof c.outcomes === 'number' ? `<text x="${c.x + w - 4}" y="${c.y + 27}" font-size="9" fill="#64748b" text-anchor="end">◆${c.outcomes}</text>` : '')
+                    );
+                }
+                document.getElementById('sceneMeta').textContent =
+                    `scene ${m.schema_version} · ${m.policy} · ${m.theme} · rev ${m.scene_revision} · ${(m.components || []).length} components`;
+                root.innerHTML = chips.join('');
+            } catch (e) {
+                root.innerHTML = '<text x="20" y="20" fill="#94a3b8" font-size="12">scene manifest unavailable (backend offline?)</text>';
+            }
+        }
 
         async function openLivingView() {
             if (!G30.loaded) { await loadGraph(); buildGraphInteractions(); }

@@ -60,7 +60,7 @@ def test_g31_e_three_independent_dimensions() -> None:
         assert d2["outcome"] == "evidenced"
         assert "never as failure" not in d2["outcome"]  # state vocabulary, not prose
         # 7. CHO-owned overdue commitment -> attention required; outcome unchanged
-        cho = gs.create(
+        gs.create(
             {
                 "kind": "commitment",
                 "title": "CHO answer",
@@ -120,7 +120,7 @@ def test_g31_e_visual_states() -> None:
         p2 = gs.create({"kind": "project", "title": "P-clean", "parent_id": idea2["id"]})
         done_ms = gs.create({"kind": "milestone", "title": "Mdone", "parent_id": p2["id"]})
         gs.patch(done_ms["id"], {"verified": True})
-        idle = gs.create(
+        gs.create(
             {
                 "kind": "milestone",
                 "title": "Midle2",

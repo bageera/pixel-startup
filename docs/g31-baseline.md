@@ -48,6 +48,42 @@ counts need a sustained interaction session (Phase 3 will re-measure with the
 instrumented loop); "idle CPU %" is currently inferred from the 16 fps idle rAF
 evidence (full redraw per frame) rather than a profiler number.
 
+## G32-B/C — measured frame policy + bounded scene view (2026-11-22)
+
+`assets/office-loop.js` (CommonJS + `window.PixelLoop`) carries the frame policy:
+`decide(now)` returns `{draw, mode}` — a full canvas redraw happens only at the
+**active cap (33 ms)** while a character actually travels, otherwise at the
+**ambient cap (100 ms)** for cosmetic wander, and the **lite cap (200 ms)** under
+`.pixel-lite`/`prefers-reduced-motion`; the `dirty` flag forces a redraw on demand.
+Cosmetic character `update()` logic keeps its original per-rAF cadence, so walking
+speed and idle bob are unchanged — only the canvas redraw is capped
+(`index.html` `gameLoop`). `framePolicy.stats()` ring-buffers the last 240 rAF gaps
+(p50/p95/max) and `window.__pixelDraws` counts actual full redraws.
+
+Measured over CDP (same Docker-stack environment as above, headless-chrome rAF ≈15 Hz):
+
+| Metric | Baseline (pre-G32-B) | After |
+| --- | --- | --- |
+| Idle full redraws | ~32 per 2 s (every rAF tick, 16 fps) | **14 per 2 s** (ambient cap binds; 7/s vs 15 ticks/s) |
+| Frame gaps (p50/p95) | unmeasured | 66.7 / 133.3 ms (tick floor of this VM) |
+| Walking (active) | every tick | every tick (33 ms cap below tick floor) |
+| JS heap | 13.2 MB | unchanged (policy is float64 ring + counters) |
+
+On a real 60 Hz browser the caps bound redraws to ~30 fps while walking and
+~10 fps ambient (vs 60 fps before); `.pixel-lite`/reduced-motion drops to 5 fps.
+Suite: `tests/office-loop.js` (7 asserts, in `npm test`) pins every cap + the
+dirty-bypass + the stats math + the background-gap rejection.
+
+## G32-C — bounded Office Scene view
+
+`dashboard.html` tab "Office Scene": renders `GET /api/v1/scene` (schema v1) as
+static SVG chips — no canvas, no timers, redraw only on fetch; state ETag +
+304 skip reuses the graph pattern. Components without `ref` (aggregates) and
+types outside the manifest's `types` registry are skipped client-side
+(G31-G contract). Verified live: the bounded org view (rev 0a3b9f5f2788e4fa,
+policy focused) with the full dashboard chrome (32-bit truecolor in chrome, art
+sprites untouched).
+
 ## Dependency of Phase 2+ on this baseline
 
 G32-B targets from evidence: idle rAF full-redraw → dirty-layer/idle-stop;
