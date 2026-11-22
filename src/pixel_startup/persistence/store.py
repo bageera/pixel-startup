@@ -548,3 +548,236 @@ def align_employee_roster(
         "pending_bindings": pending_bindings,
         "observed_runtime": observed or {},
     }
+
+
+class GraphStore:
+    """G30-A: organizational graph (typed nodes + explicit edges, stable ids).
+
+    Scope isolation lives at the edge: a node never appears in another scope's
+    listing, and a child inherits its parent's scope (cross-scope parenting is
+    refused). Edges are idempotent — re-adding an existing (from,to,kind)
+    returns the current row, never a duplicate.
+    """
+
+    KIND_PARENTS = {  # allowed parent kinds per child kind
+        "goal": {"organization", "idea"},
+        "idea": {"organization", "idea", "goal"},
+        "project": {"idea", "goal"},
+        "milestone": {"project"},
+        "task": {"project", "milestone"},
+    }
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+        self._ensure_org()
+
+    def _ensure_org(self) -> None:
+        row = self.db.conn.execute("SELECT id FROM graph_nodes WHERE id = 'org'").fetchone()
+        if row is None:
+            ts = _now()
+            self.db.conn.execute(
+                "INSERT OR IGNORE INTO graph_nodes"
+                " (id, kind, title, status, scope, created_at, updated_at)"
+                " VALUES ('org', 'organization', 'Pixel Startup',"
+                " 'active', 'company', ?, ?)",
+                (ts, ts),
+            )
+
+    def _get(self, node_id: str):
+        return self.db.conn.execute("SELECT * FROM graph_nodes WHERE id = ?", (node_id,)).fetchone()
+
+    def get(self, node_id: str) -> dict | None:
+        row = self._get(node_id)
+        return dict(row) if row else None
+
+    def create(self, payload: dict) -> dict:
+        kind = payload.get("kind") or ""
+        title = str(payload.get("title") or "").strip()
+        if kind not in self.KIND_PARENTS:
+            raise ValueError(f"unsupported node kind: {kind}")
+        if not title:
+            raise ValueError("title is required")
+        parent_id = payload.get("parent_id") or "org"
+        scope = payload.get("scope") or "company"
+        if parent_id == "org" and scope == "household":
+            parent_id = None  # household is its own root; company org row stays single
+        elif scope != "company":
+            parent = self.get(parent_id)
+            if parent is None or parent["scope"] != scope:
+                raise ValueError("cross-scope parenting refused (company/household isolation)")
+        parent = self.get(parent_id) if parent_id else None
+        if parent_id and parent is None:
+            raise ValueError(f"parent {parent_id} not found")
+        if parent is not None and parent["kind"] not in self.KIND_PARENTS[kind]:
+            raise ValueError(f"{kind} cannot live under {parent['kind']}")
+        scope = parent["scope"] if parent else scope
+        import uuid
+
+        node_id = f"{kind}-{uuid.uuid4().hex[:12]}"
+        ts = _now()
+        self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.conn.execute(
+                "INSERT INTO graph_nodes (id, kind, title, status, parent_id, priority,"
+                " due_at, cadence, verified, scope, detail, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    node_id,
+                    kind,
+                    title,
+                    "active",
+                    parent_id,
+                    int(payload.get("priority") or 2),
+                    payload.get("due_at"),
+                    payload.get("cadence"),
+                    0,
+                    scope,
+                    payload.get("detail"),
+                    ts,
+                    ts,
+                ),
+            )
+            self.db.conn.execute("COMMIT")
+        except Exception:
+            self.db.conn.execute("ROLLBACK")
+            raise
+        node = self.get(node_id)
+        assert node is not None  # just inserted/updated
+        return node
+
+    def patch(self, node_id: str, patch: dict) -> dict:
+        row = self._get(node_id)
+        if row is None:
+            raise ValueError(f"node {node_id} not found")
+        row = dict(row)
+        allowed = ("title", "status", "priority", "due_at", "cadence", "detail")
+        sets: list[str] = []
+        args: list[object] = []
+        for field in allowed:
+            if field in patch:
+                value = patch[field]
+                if field == "status":
+                    if value not in ("active", "paused", "done", "archived"):
+                        raise ValueError(f"unsupported status: {value}")
+                if field == "priority":
+                    if not (1 <= int(value) <= 5):
+                        raise ValueError("priority must be 1-5")
+                if field == "title" and not str(value or "").strip():
+                    raise ValueError("title cannot be empty")
+                setattr_row = field
+                sets.append(f"{setattr_row} = ?")
+                args.append(value)
+        if "verified" in patch:
+            if row["kind"] not in ("milestone", "task"):
+                raise ValueError("verified applies to milestones and tasks")
+            if patch["verified"] not in (0, 1, True, False):
+                raise ValueError("verified must be 0/1")
+            sets.append("verified = ?")
+            args.append(int(bool(patch["verified"])))
+            if patch["verified"]:
+                sets.append("status = ?")
+                args.append("done")
+            elif row["status"] == "done":
+                sets.append("status = ?")
+                args.append("active")
+        if not sets:
+            return row  # nothing to change: return current, honest no-op
+        sets.append("updated_at = ?")
+        args.append(_now())
+        args.append(node_id)
+        self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.conn.execute(f"UPDATE graph_nodes SET {', '.join(sets)} WHERE id = ?", args)
+            self.db.conn.execute("COMMIT")
+        except Exception:
+            self.db.conn.execute("ROLLBACK")
+            raise
+        node = self.get(node_id)
+        assert node is not None  # just inserted/updated
+        return node
+
+    def add_edge(self, from_id: str, to_id: str, kind: str) -> dict:
+        if kind not in ("depends_on", "related", "evidence"):
+            raise ValueError(f"unsupported edge kind: {kind}")
+        a, b = self.get(from_id), self.get(to_id)
+        if a is None or b is None:
+            raise ValueError("edge endpoints not found")
+        if a["scope"] != b["scope"]:
+            raise ValueError("cross-scope edges refused (company/household isolation)")
+        if from_id == to_id:
+            raise ValueError("self edges refused")
+        existing = self.db.conn.execute(
+            "SELECT * FROM graph_edges WHERE from_id = ? AND to_id = ? AND kind = ?",
+            (from_id, to_id, kind),
+        ).fetchone()
+        if existing:
+            return dict(existing)  # idempotent: a duplicate is the same record
+        if kind == "depends_on":
+            # cycle guard: following depends_on from `to` must never reach `from`
+            seen: set[str] = set()
+            stack = [to_id]
+            while stack:
+                cur = stack.pop()
+                if cur == from_id:
+                    raise ValueError("depends_on cycle refused")
+                if cur in seen:
+                    continue
+                seen.add(cur)
+                stack.extend(
+                    r["to_id"]
+                    for r in self.db.conn.execute(
+                        "SELECT to_id FROM graph_edges WHERE from_id = ? AND kind = 'depends_on'",
+                        (cur,),
+                    ).fetchall()
+                )
+        import uuid
+
+        edge = {
+            "id": f"edge-{uuid.uuid4().hex[:12]}",
+            "from_id": from_id,
+            "to_id": to_id,
+            "kind": kind,
+            "created_at": _now(),
+        }
+        self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.conn.execute(
+                "INSERT INTO graph_edges (id, from_id, to_id, kind, created_at) VALUES (?,?,?,?,?)",
+                (edge["id"], from_id, to_id, kind, edge["created_at"]),
+            )
+            self.db.conn.execute("COMMIT")
+        except Exception:
+            self.db.conn.execute("ROLLBACK")
+            raise
+        return edge
+
+    def remove_edge(self, edge_id: str) -> bool:
+        cur = self.db.conn.execute("SELECT id FROM graph_edges WHERE id = ?", (edge_id,)).fetchone()
+        if cur is None:
+            return False
+        self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.conn.execute("DELETE FROM graph_edges WHERE id = ?", (edge_id,))
+            self.db.conn.execute("COMMIT")
+        except Exception:
+            self.db.conn.execute("ROLLBACK")
+            raise
+        return True
+
+    def list(self, scope: str = "company") -> tuple[list[dict], list[dict]]:
+        nodes = [
+            dict(r)
+            for r in self.db.conn.execute(
+                "SELECT * FROM graph_nodes WHERE scope = ? ORDER BY created_at, id",
+                (scope,),
+            )
+        ]
+        edges = [
+            dict(r)
+            for r in self.db.conn.execute(
+                "SELECT e.* FROM graph_edges e JOIN graph_nodes n ON n.id = e.from_id"
+                " WHERE n.scope = ? ORDER BY e.created_at, e.id",
+                (scope,),
+            )
+        ]
+        return nodes, edges

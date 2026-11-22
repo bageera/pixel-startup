@@ -139,6 +139,39 @@ MIGRATIONS: dict[int, list[str]] = {
             updated_at TEXT NOT NULL
         )""",
     ],
+    6: [
+        # G30-A: organizational graph — typed nodes (organization/goal/idea/
+        # project/milestone/task) + explicit edges (dependency/related/evidence).
+        # One table per kind would be seven near-identical tables; kind + CHECK
+        # keeps the schema minimal and the projection deterministic.
+        """CREATE TABLE IF NOT EXISTS graph_nodes (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL CHECK (kind IN
+                ('organization','goal','idea','project','milestone','task')),
+            title TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active','paused','done','archived')),
+            parent_id TEXT REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            priority INTEGER NOT NULL DEFAULT 2 CHECK (priority BETWEEN 1 AND 5),
+            due_at TEXT,
+            cadence TEXT,
+            verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0,1)),
+            scope TEXT NOT NULL DEFAULT 'company' CHECK (scope IN ('company','household')),
+            detail TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS graph_edges (
+            id TEXT PRIMARY KEY,
+            from_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            to_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL CHECK (kind IN ('depends_on','related','evidence')),
+            created_at TEXT NOT NULL,
+            UNIQUE (from_id, to_id, kind)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_graph_nodes_parent ON graph_nodes(parent_id)",
+        "CREATE INDEX IF NOT EXISTS ix_graph_edges_to ON graph_edges(to_id)",
+    ],
 }
 
 EMPLOYEE_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {

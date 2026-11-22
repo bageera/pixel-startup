@@ -183,6 +183,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
                     Collisions & Rooms (AI)
                 </button>
+                <button onclick="switchTab('living')" id="tabBtnLiving" class="py-3 px-2 text-sm font-bold tab-inactive flex items-center gap-2 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4L8.12 10.06"></path><path d="M14 12l6 8"></path><path d="M8.9 13.94L20 20"></path></svg>
+                    Living Startup
+                </button>
             </div>
         </div>
 
@@ -194,6 +198,46 @@
 
         <!-- CONTENT AREA -->
         <div class="flex-1 overflow-hidden relative bg-[#0f0f1a]">
+            <!-- VIEW: LIVING STARTUP (G30 — lazy: rendered only when opened) -->
+            <div id="viewLiving" class="absolute inset-0 hidden flex-col w-full max-w-7xl mx-auto p-4 gap-3">
+                <div class="flex items-center gap-3 shrink-0">
+                    <span id="livingPolicy" class="text-xs text-slate-400">policy: —</span>
+                    <span class="text-xs text-slate-500">pan = drag · zoom = wheel · click = select · ▸/▾ = branch</span>
+                    <div class="flex-1"></div>
+                    <input id="newIdeaTitle" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm text-slate-200" placeholder="New idea (seed)…">
+                    <button onclick="plantIdea()" class="bg-green-600 hover:bg-green-500 text-white text-xs font-bold py-1.5 px-3 rounded transition-colors">Plant seed</button>
+                    <button onclick="loadGraph(true)" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold py-1.5 px-3 rounded transition-colors">Refresh</button>
+                </div>
+                <div class="flex flex-1 gap-3 min-h-0">
+                    <div id="graphViewport" class="flex-1 relative overflow-hidden bg-[#0c0c16] border border-slate-700 rounded-lg" style="cursor: grab;">
+                        <svg id="graphSvg" width="100%" height="100%">
+                            <g id="graphRoot" transform="translate(80,60) scale(1)"></g>
+                        </svg>
+                    </div>
+                    <div class="w-80 shrink-0 overflow-y-auto bg-slate-900/70 border border-slate-700 rounded-lg p-3 text-slate-200 space-y-3">
+                        <div id="livingDetail" class="text-xs text-slate-500">Select an idea…</div>
+                        <div class="pt-2 border-t border-slate-700">
+                            <div class="text-xs font-bold text-slate-400 mb-1">Connect related (no duplicates)</div>
+                            <div class="flex gap-1 items-center">
+                                <select id="edgeFrom" class="bg-slate-800 border border-slate-600 rounded text-xs p-1 flex-1 text-slate-200"></select>
+                                <span class="text-slate-400 text-xs">→</span>
+                                <select id="edgeTo" class="bg-slate-800 border border-slate-600 rounded text-xs p-1 flex-1 text-slate-200"></select>
+                            </div>
+                            <div class="flex gap-1 mt-1">
+                                <select id="edgeKind" class="bg-slate-800 border border-slate-600 rounded text-xs p-1 text-slate-200">
+                                    <option value="related">related</option>
+                                    <option value="depends_on">depends on</option>
+                                </select>
+                                <button onclick="connectNodes()" class="bg-slate-600 hover:bg-slate-500 text-white text-xs font-bold py-1 px-2 rounded">Link</button>
+                            </div>
+                        </div>
+                        <div class="pt-2 border-t border-slate-700">
+                            <div class="text-xs font-bold text-slate-400 mb-1">Stalled work</div>
+                            <div id="livingStalled" class="text-xs space-y-1"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         
             <!-- VIEW: CHARACTERS -->
             <div id="viewChars" class="absolute inset-0 p-6 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col">
@@ -457,7 +501,146 @@
                 vMap.classList.remove('hidden');
                 bMap.className = "py-3 px-2 text-sm font-bold tab-active flex items-center gap-2 transition-colors";
                 renderGrid();
+            } else if (t === 'living') {
+                // G30-E: lazy — assets and data only load when the view opens
+                const vLiving = document.getElementById('viewLiving');
+                vLiving.classList.remove('hidden');
+                document.getElementById('tabBtnLiving').className = "py-3 px-2 text-sm font-bold tab-active flex items-center gap-2 transition-colors";
+                openLivingView();
             }
+        }
+
+        // === G30: Living Startup mind map (deterministic, no model calls) ======
+        const G30_ICON = 'assets/health/%s.png';
+        const G30_STATE_LABEL = { 'seed': 'Seed', 'growing': 'Growing', 'thriving': 'Thriving', 'needs-attention': 'Needs attention', 'withering': 'Withering', 'dormant': 'Dormant', 'completed': 'Completed', 'archived': 'Archived' };
+        let G30 = { loaded: false, nodes: [], edges: [], collapsed: new Set(JSON.parse(localStorage.getItem('pixel_graph_collapsed') || '[]')), pos: JSON.parse(localStorage.getItem('pixel_graph_pos') || '{}'), selected: null };
+
+        async function openLivingView() {
+            if (!G30.loaded) { await loadGraph(); buildGraphInteractions(); }
+            else { await loadGraph(); }
+        }
+
+        async function loadGraph(notify) {
+            try {
+                const r = await fetchApi('GET', '/api/v1/graph?scope=company', null);
+                if (!r) throw new Error('graph unavailable');
+                G30.nodes = r.nodes || [];
+                G30.edges = r.edges || [];
+                G30.policy = r.policy || 'focused';
+                document.getElementById('livingPolicy').textContent = 'CHO policy: ' + G30.policy + ' · ' + (G30.policy === 'curious' ? 'idea discovery' : G30.policy === 'driven' ? 'outcomes & bottlenecks' : 'projects & execution');
+                G30.loaded = true;
+                renderGraph();
+            } catch (e) {
+                document.getElementById('graphRoot').innerHTML = '<text x="0" y="0" fill="#94a3b8" font-size="12">python graph unavailable (backend offline?)</text>';
+            }
+        }
+
+        function g30Children(id) { return G30.nodes.filter(n => n.parent_id === id && !G30.collapsed.has(n.parent_id)); }
+        function g30ById(id) { return G30.nodes.find(n => n.id === id); }
+
+        // deterministic layout: roots in a column, children fan out by tier
+        function g30Layout() {
+            const roots = G30.nodes.filter(n => !n.parent_id);
+            const pos = {}; let x = 0;
+            const walk = (n, depth, col) => {
+                const kids = g30Children(n.id);
+                pos[n.id] = { x: col * 170 + 40, y: depth * 90 + 40 };
+                let span = kids.length, kcol = col - (span - 1) / 2;
+                kids.forEach(k => { walk(k, depth + 1, pos[n.id] && span > 1 ? Math.round(kcol + kids.indexOf(k) * 1) : col); });
+            };
+            roots.forEach((r, i) => walk(r, 0, i * (2 + Math.max(0, g30Children(r.id).length))));
+            // drag overrides
+            for (const [id, p] of Object.entries(G30.pos)) if (pos[id]) pos[id] = p;
+            return pos;
+        }
+
+        function renderGraph() {
+            const root = document.getElementById('graphRoot');
+            const pos = g30Layout();
+            const esc = (s) => String(s).replace(/[&<>\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]));
+            const stateColor = { 'seed': '#8d6e63', 'growing': '#7cb342', 'thriving': '#66bb6a', 'needs-attention': '#ffb300', 'withering': '#bf360c', 'dormant': '#78909c', 'completed': '#2e7d32', 'archived': '#616161' };
+            let edgesSvg = '', nodesSvg = '';
+            for (const e of G30.edges) {
+                const a = pos[e.from_id], b = pos[e.to_id];
+                if (!a || !b) continue;
+                const dash = e.kind === 'depends_on' ? 'stroke-dasharray="4 3"' : '';
+                const color = e.kind === 'depends_on' ? '#ffb300' : '#475569';
+                edgesSvg += `<line x1="${a.x + 16}" y1="${a.y + 16}" x2="${b.x + 16}" y2="${b.y + 16}" stroke="${color}" ${dash} stroke-width="1.5" opacity="0.9"><title>${esc(e.kind)}</title></line>`;
+            }
+            for (const n of G30.nodes) {
+                const p = pos[n.id]; if (!p) continue;
+                const v = n.views || { state: 'growing', explanation: '' };
+                const isCollapsed = G30.collapsed.has(n.id);
+                const hasKids = G30.nodes.some(k => k.parent_id === n.id);
+                nodesSvg += `<g transform="translate(${p.x},${p.y})" style="cursor:pointer" onclick="selectGraphNode('${esc(n.id)}')">
+                    <rect x="0" y="0" width="170" height="34" rx="6" fill="#111827" stroke="${stateColor[v.state]}" stroke-width="1.5"></rect>
+                    <image href="${G30_ICON.replace('%s', v.state)}" x="3" y="9" width="16" height="16"></image>
+                    <text x="24" y="14" font-size="10" fill="#cbd5e1">${esc(n.title.slice(0, 20))}</text>
+                    <text x="24" y="26" font-size="8" fill="${stateColor[v.state]}">${esc(G30_STATE_LABEL[v.state])}${n.views && n.views.progress != null ? ' · ' + Math.round(v.progress * 100) + '%' : ''}</text>
+                    ${hasKids ? `<text x="158" y="14" font-size="10" fill="#94a3b8" style="pointer-events:all;cursor:pointer" onclick="event.stopPropagation();toggleBranch('${esc(n.id)}')">${isCollapsed ? '▸' : '▾'}</text>` : ''}
+                </g>`;
+            }
+            root.innerHTML = edgesSvg + nodesSvg;
+            // detail panel + stalled list
+            const stalled = G30.nodes.filter(n => n.views && ['withering', 'needs-attention'].includes(n.views.state));
+            document.getElementById('livingStalled').innerHTML = stalled.length
+                ? stalled.map(n => `<div><span style="color:${n.views.state === 'withering' ? '#ff8a65' : '#ffd54f'}">●</span> ${esc(n.title)} — <i>${esc(n.views.explanation.slice(0, 80))}</i></div>`).join('')
+                : '<span style="color:#7cb342">nothing stalled</span>';
+            const selects = ['edgeFrom', 'edgeTo'].map(id => document.getElementById(id));
+            selects.forEach(s => { s.innerHTML = G30.nodes.filter(n => n.kind !== 'organization').map(n => `<option value="${esc(n.id)}">${esc(n.title)}</option>`).join(''); });
+            if (G30.selected) selectGraphNode(G30.selected);
+        }
+
+        function toggleBranch(id) {
+            if (G30.collapsed.has(id)) G30.collapsed.delete(id); else G30.collapsed.add(id);
+            localStorage.setItem('pixel_graph_collapsed', JSON.stringify([...G30.collapsed]));
+            renderGraph();
+        }
+
+        function selectGraphNode(id) {
+            G30.selected = id;
+            const n = g30ById(id); if (!n) return;
+            const projects = G30.nodes.filter(k => k.parent_id === id);
+            const deps = G30.edges.filter(e => e.from_id === id && e.kind === 'depends_on');
+            const verified = projects.filter(p => p.views && p.views.progress >= 1).length;
+            document.getElementById('livingDetail').innerHTML = `
+                <div class="font-bold text-sm mb-1">${esc(n.title)}</div>
+                <div class="text-xs mb-1"><span style="color:#7cb342">state:</span> ${esc(G30_STATE_LABEL[(n.views || {}).state || 'growing'])}</div>
+                <div class="text-xs text-slate-400 mb-2">${esc((n.views || {}).explanation || '')}</div>
+                ${n.due_at ? `<div class="text-xs">due: ${esc(n.due_at)}${n.cadence ? ' · cadence ' + esc(n.cadence) : ''}</div>` : ''}
+                <div class="text-xs mt-2 font-bold text-slate-400">${n.kind == 'organization' ? 'branches' : 'children'} (${projects.length})${verified ? ' · ' + verified + ' fully verified' : ''}</div>
+                ${projects.map(k => `<div class="text-xs" style="cursor:pointer" onclick="selectGraphNode('${esc(k.id)}')">• ${esc(k.title)} <span style="color:#94a3b8">${esc((k.views || {}).state || '')}</span></div>`).join('') || '<div class="text-xs text-slate-500">none yet</div>'}
+                <div class="text-xs mt-2 font-bold text-slate-400">dependencies</div>
+                ${deps.map(e => { const t = g30ById(e.to_id); return `<div class="text-xs">⚠ ${esc(t ? t.title : e.to_id)}</div>`; }).join('') || '<div class="text-xs text-slate-500">none</div>'}`;
+        }
+
+        async function plantIdea() {
+            const title = document.getElementById('newIdeaTitle').value.trim();
+            if (!title) return;
+            await fetchApi('POST', '/api/v1/graph/nodes', { kind: 'idea', title });
+            document.getElementById('newIdeaTitle').value = '';
+            await loadGraph();
+        }
+
+        async function connectNodes() {
+            const from = document.getElementById('edgeFrom').value;
+            const to = document.getElementById('edgeTo').value;
+            const kind = document.getElementById('edgeKind').value;
+            if (from === to) return;
+            await fetchApi('POST', '/api/v1/graph/edges', { from_id: from, to_id: to, kind });
+            await loadGraph();
+        }
+
+        function buildGraphInteractions() {
+            const vp = document.getElementById('graphViewport');
+            const root = document.getElementById('graphRoot');
+            let pan = null, tx = 80, ty = 60, scale = 1;
+            const apply = () => root.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+            vp.addEventListener('pointerdown', (e) => { if (e.target.closest('g[transform]')) return; pan = { x: e.clientX - tx, y: e.clientY - ty }; vp.style.cursor = 'grabbing'; });
+            window.addEventListener('pointermove', (e) => { if (!pan) return; tx = e.clientX - pan.x; ty = e.clientY - pan.y; apply(); });
+            window.addEventListener('pointerup', () => { pan = null; vp.style.cursor = 'grab'; });
+            vp.addEventListener('wheel', (e) => { e.preventDefault(); scale = Math.min(2.5, Math.max(0.4, scale * (e.deltaY < 0 ? 1.1 : 0.9))); apply(); }, { passive: false });
+            apply();
         }
 
         // === G25 backend ops strip: api/v1 services + office roster (honest offline) ===

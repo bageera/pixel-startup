@@ -60,7 +60,7 @@ def test_v1_config_shape_and_startup_roundtrip(tmp_path) -> None:
             base = r.json()
             chief = next(a for a in base["agents"] if a["name"] == "Ghostface")
             assert chief["role"] == "Owner"
-            assert base["startup"] == {"direction": "", "goals": []}
+            assert base["startup"] == {"direction": "", "goals": [], "mood": "focused"}
 
             r = await c.post(
                 "/api/v1/config",
@@ -79,7 +79,10 @@ def test_v1_config_shape_and_startup_roundtrip(tmp_path) -> None:
             assert any(a["name"] == "Ghostface" for a in cfg["agents"])
 
             mv = (await c.get("/api/v1/move-in", headers=AUTH)).json()
-            assert mv["ready"] is True and mv["checks"]["direction"]["ok"] is True
+            # G29: ready additionally requires the harness/minio gates; this test
+            # pins the organization half only.
+            assert mv["checks"]["direction"]["ok"] is True
+            assert mv["checks"]["goals"]["ok"] is True
             assert "Ghostface" in mv["checks"]["chief"]["detail"]
 
     anyio.run(drive)
@@ -103,7 +106,8 @@ def test_v1_config_invalid_arrays_reset_and_startup_survives_partial_saves(tmp_p
             assert len(cfg["agents"]) == 6 and any(a["name"] == "Ghostface" for a in cfg["agents"])
             assert cfg["startup"]["direction"] == "Own AI-ops"
             mv = (await c.get("/api/v1/move-in", headers=AUTH)).json()
-            assert mv["ready"] is True
+            assert mv["checks"]["direction"]["ok"] is True
+            # full ready additionally needs harness+minio (G29); pinned in test_move_in_e2e
 
     anyio.run(drive)
 

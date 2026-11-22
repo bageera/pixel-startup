@@ -84,8 +84,15 @@ async def move_in_v1(request: Request, _auth: str = Depends(office_write_auth)) 
     chief_ok = chief is not None and chief.get("active") is not False
     direction = str(office.startup.get("direction") or "").strip()
     goals = [g for g in (office.startup.get("goals") or []) if str(g).strip()]
+    # G29: moved-in now also means a harness and object storage are live.
+    states: dict[str, bool] = {}
+    for reg in request.app.state.container.registry.all():
+        if reg.provider_id in ("hermes_home", "minio"):
+            states[reg.provider_id] = reg.state.value in ("qualified", "active")
+    harness_ok = states.get("hermes_home", False)
+    minio_ok = states.get("minio", False)
     return {
-        "ready": chief_ok and bool(direction) and bool(goals),
+        "ready": chief_ok and bool(direction) and bool(goals) and harness_ok and minio_ok,
         "checks": {
             "chief": {
                 "ok": chief_ok,
@@ -101,5 +108,21 @@ async def move_in_v1(request: Request, _auth: str = Depends(office_write_auth)) 
                 "detail": direction if direction else "startup direction not set",
             },
             "goals": {"ok": bool(goals), "detail": f"{len(goals)} goal(s) on the board"},
+            "harness": {
+                "ok": harness_ok,
+                "detail": (
+                    "harness connected (hermes_home)"
+                    if harness_ok
+                    else "harness not connected — mount HERMES_HOME, run Hermes, verify binding"
+                ),
+            },
+            "minio": {
+                "ok": minio_ok,
+                "detail": (
+                    "object storage connected (access log written at startup)"
+                    if minio_ok
+                    else "object storage not connected — MINIO_* keys in .env, run `make minio`"
+                ),
+            },
         },
     }

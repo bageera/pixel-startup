@@ -79,11 +79,16 @@ class SigV4Client:
             "Host": self._host.split("/")[-1],
             "X-Amz-Date": amz_date,
             "X-Amz-Content-Sha256": payload_hash,
+            # http.client injects these on the wire; MinIO rejects unsigned
+            # headers ("headers present ... not signed") — sign them explicitly.
+            "Accept-Encoding": "identity",
+            "Content-Length": str(len(body)),
             **headers,
         }
-        signed = ";".join(sorted(base_headers))
+        signed = ";".join(sorted(k.lower() for k in base_headers))
         canonical_headers = "".join(
-            f"{k.lower()}:{base_headers[k]}\n" for k in sorted(base_headers)
+            f"{k}:{base_headers[dict((lk.lower(), lk) for lk in base_headers)[k]]}\n"
+            for k in signed.split(";")
         )
         canonical = "\n".join([method, path, "", canonical_headers, signed, payload_hash])
         scope = f"{date_stamp}/us-east-1/s3/aws4_request"
@@ -91,7 +96,15 @@ class SigV4Client:
         k = hmac.new(k, b"us-east-1", hashlib.sha256).digest()
         k = hmac.new(k, b"s3", hashlib.sha256).digest()
         k = hmac.new(k, b"aws4_request", hashlib.sha256).digest()
-        sig = hmac.new(k, canonical.encode(), hashlib.sha256).hexdigest()
+        string_to_sign = "\n".join(
+            [
+                "AWS4-HMAC-SHA256",
+                amz_date,
+                scope,
+                hashlib.sha256(canonical.encode()).hexdigest(),
+            ]
+        )
+        sig = hmac.new(k, string_to_sign.encode(), hashlib.sha256).hexdigest()
         base_headers["Authorization"] = (
             f"AWS4-HMAC-SHA256 Credential={self._ak}/{scope}, "
             f"SignedHeaders={signed}, Signature={sig}"
@@ -102,7 +115,10 @@ class SigV4Client:
             else http.client.HTTPConnection(self._host, timeout=self._timeout)
         )
         try:
-            conn.request(method, urllib.parse.quote(path), body=body, headers=base_headers)
+            # body=None on empty: http.client only injects Content-Length (an
+            # unsigned header MinIO rejects: "headers present ... not signed")
+            # when a body object is passed.
+            conn.request(method, urllib.parse.quote(path), body=body or None, headers=base_headers)
             resp = conn.getresponse()
             resp_headers = dict(resp.getheaders())
             return resp.status, resp_headers, resp.read()
@@ -193,6 +209,16 @@ class MinioStorageProvider:
             "sha256": headers["X-Amz-Meta-Sha256"],
             "size": len(body),
         }
+
+    def probe(self) -> dict:
+        # G29 evidence: a SigV4 HEAD on the bucket itself is the cheap contact
+        # check (bucket absent but endpoint answering -> reachable, flagged).
+        status, _, _ = self._require().request("HEAD", f"/{self._bucket}", {})
+        if status in (401, 403):
+            raise AccessDenied("object storage rejected the request")
+        if status >= 500:
+            raise StorageUnavailable(f"object storage error {status}")
+        return {"online": True, "bucket_present": status == 200}
 
     def list(self, prefix: str, scope: str, subject_id: str) -> list[str]:
         prefix = validate_key(prefix if prefix.endswith("/") else f"{prefix}/", scope, subject_id)

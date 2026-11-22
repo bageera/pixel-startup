@@ -280,6 +280,32 @@ def _register_storage(container: Container, settings: Settings) -> None:
         )
     )
     container.registry.transition(provider.provider_id, ProviderState.CANDIDATE)
+    container.providers["minio"] = provider
+    if client is not None:  # G29: evidence-gated promotion + the startup access log
+        from datetime import datetime, timezone
+
+        try:
+            probe = provider.probe()
+            if probe.get("online"):
+                container.registry.transition(provider.provider_id, ProviderState.QUALIFIED)
+            if not probe.get("bucket_present"):
+                logger.warning("minio bucket missing; create it before storing access logs")
+        except Exception:  # noqa: BLE001 - probe failure stays candidate, honest
+            pass
+        try:  # the startup access log: one JSONL line appended per office start
+            today = datetime.now(timezone.utc).date().isoformat()
+            key = f"shared/access-logs/{today}.jsonl"
+            try:
+                existing, _meta = provider.get(key, "company", "office")
+            except FileNotFoundError:
+                existing = b""
+            line = json.dumps(
+                {"ts": datetime.now(timezone.utc).isoformat(), "event": "startup"}
+            ).encode()
+            provider.put(key, existing + line + b"\n", "company", "office", "application/x-ndjson")
+            logger.info("startup access log written to object storage", extra={"key": key})
+        except Exception:  # noqa: BLE001 - storage down must never block the boot
+            logger.info("access log write skipped (object storage unreachable)")
 
 
 def _register_comms(container: Container, settings: Settings) -> None:
@@ -483,6 +509,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(capabilities.router)
     app.include_router(office_state.router)
     app.include_router(chief.router)  # G23 BEFORE the gateway catch-all: native wins
+    from pixel_startup.api import graph as graph_api
+
+    app.include_router(graph_api.router)  # G30: living-startup organizational graph
     # G20-B asset serving: node's PUBLIC_FILES allowlist semantics
     # (root index.html + dashboard.html; /assets/* static; /favicon.ico 404).
     repo_root = Path(__file__).resolve().parents[2]

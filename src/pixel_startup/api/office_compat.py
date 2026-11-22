@@ -210,8 +210,15 @@ class OfficeState:
                 merged["direction"] = new["direction"]
             if isinstance(new.get("goals"), list):
                 merged["goals"] = [str(g).strip() for g in new["goals"] if str(g).strip()]
+            if isinstance(new.get("mood"), str) and new["mood"].lower() in (
+                "curious",
+                "focused",
+                "driven",
+            ):
+                merged["mood"] = new["mood"].lower()  # G30-F: CHO view preference
         merged.setdefault("direction", "")
         merged.setdefault("goals", [])
+        merged.setdefault("mood", "focused")
         return merged
 
     def save_config(self, body: dict) -> dict:
