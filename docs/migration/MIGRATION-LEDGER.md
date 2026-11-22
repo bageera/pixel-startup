@@ -690,3 +690,45 @@ recomputes; cycles/self-edges refused at creation; scope isolation enforced.
 G31-A/B/C/D. Honest skips: responsibility model covers graph-recorded
 commitments (chat/email transports are G31 later / harness-owned); no
 suggestion surface yet; time-zone handling = local date (single-org host).
+
+## G31 Phase 2 — health dimensions + CHO resolver + scene manifest (G31-E/F/G)
+
+**G31-E (3 independent dimensions + 5 new visual states):**
+`dimensions()` per node: execution (health projection state), attention
+(required / waiting-external / clear — bubbles required children), outcome
+(seed / unproven / evidenced — EVIDENCE edges are the only proof of result;
+a completed task without an outcome record is unproven, never a success
+inference; negative results with evidence are evidenced, never failure).
+New states with tested rules: blocked (hard unresolved dep — upgrades the old
+needs-attention), waiting-external (owner client/vendor/external, silence is
+never failure), recovering (unpause writes detail.resumed_at; 14d window),
+stable (>=50% verified, no >=needs-attention pressure), unknown (no
+deadline/cadence/owner — nothing invented). 5 new shape-distinct sprites
+(deterministic generator + --check). Agent activity w/o outcome changes
+NOTHING (tested); CHO overdue commitment -> attention required; same elapsed
+client silence -> waiting (tested side by side).
+
+**G31-F (resolver):** `graph/scene.py` scene_manifest(nodes, edges, mood,
+scope, today, theme) — curious shows idea seeds (capped 10 + count summary),
+focused summarizes ideas (never renders them), driven adds decision
+stations (bounded 5; from impact: directly_blocked + downstream counts) and
+risk summaries. MODE CHANGES NEVER TOUCH RECORDS (titles asserted identical).
+Capability components: availability = verified | suggestion | unavailable
+(archived harness never available; unverified never operational). Theme is
+echoed only — proven to change nothing else (full manifest equality test).
+
+**G31-G (manifest):** schema_version 1, scope, theme, layout_seed 42,
+scene_revision (state hash), policy, data_freshness, types registry, bounded
+components. Layout = md5(node id) grid positions: minor updates NEVER
+rearrange the scene (tested); revision changes only when the org changes.
+50 projects -> exactly 20 workstations? No: STATION_CAP 10 + one summary of
+41 (tested); household scope never leaks company labels. `GET /api/v1/scene`
+(auth + state ETag, 304 on If-None-Match; verified live: revision
+0a3b9f5f2788e4fa, policy focused, org component). Unknown component types:
+frontends skip types outside the registry (contract documented; renderer
+integration is Phase 3).
+
+**Gates:** 180 pytest (5 new Phase-2 tests + G30 blocked-state updates) /
+65 npm / pyright 0 / ruff clean+fmt. **Verdict: PASS** for G31-E/F/G.
+Remaining honest skips: scene route renderer integration + bounded rendering
+(Phase 3); stress tiers S2-S4 (G32-E).

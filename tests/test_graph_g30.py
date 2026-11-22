@@ -197,7 +197,7 @@ def test_g30_g1_to_10_lifecycle(tmp_path) -> None:
             )
             snap = (await c.get("/api/v1/graph", headers=AUTH)).json()
             v_blk = next(n for n in snap["nodes"] if n["id"] == blk["id"])
-            assert v_blk["views"]["state"] == "needs-attention"
+            assert v_blk["views"]["state"] == "blocked"  # G31-E: blocked is its own state
             assert "Dependency source" in v_blk["views"]["explanation"]
 
             # 10. reopening work updates its state correctly
@@ -228,7 +228,7 @@ def test_g30_g1_to_10_lifecycle(tmp_path) -> None:
                     ids2 = {n["id"] for n in snap2["nodes"]}
                     assert idea["id"] in ids2 and proj["id"] in ids2 and blk["id"] in ids2
                     v_blk2 = next(n for n in snap2["nodes"] if n["id"] == blk["id"])
-                    assert v_blk2["views"]["state"] == "needs-attention"
+                    assert v_blk2["views"]["state"] == "blocked"
 
     anyio.run(drive)
 

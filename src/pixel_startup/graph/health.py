@@ -19,21 +19,31 @@ from datetime import date, datetime
 STATES = (
     "seed",
     "growing",
+    "stable",
     "thriving",
     "needs-attention",
     "withering",
+    "blocked",
+    "waiting-external",
     "dormant",
+    "recovering",
     "completed",
     "archived",
+    "unknown",
 )
 
 _WORST = {  # aggregate severity, used to bubble child states up to parents
     "withering": 5,
+    "blocked": 5,
     "needs-attention": 4,
     "growing": 3,
+    "stable": 3,
     "thriving": 2,
+    "recovering": 2,
     "seed": 1,
+    "waiting-external": 1,
     "dormant": 1,
+    "unknown": 1,
     "completed": 0,
     "archived": 0,
 }
@@ -45,6 +55,18 @@ def parse_cadence(text: str | None) -> float | None:
         return float(text.split("/wk")[0].strip()) if text and "/wk" in text else None
     except ValueError:
         return None
+
+
+def _resumed_at(n: dict) -> date | None:
+    import json as _json
+
+    try:
+        det = _json.loads(n.get("detail") or "{}")
+        if isinstance(det, dict) and det.get("resumed_at"):
+            return _d(det["resumed_at"])
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 def _d(text: str | None) -> date | None:
@@ -74,12 +96,11 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
     healths: dict[str, dict] = {}
 
     def _evidence(n: dict, kids: list[dict]) -> dict | None:
-        """Blocked / overdue / cadence checks. Leaves only; containers with a
-        real blocker are flagged even when their children look fine."""
+        """Blocked / overdue / cadence / ownership checks and leaf signals."""
         deps = blockers.get(n["id"])
         if deps:
             return {
-                "state": "needs-attention",
+                "state": "blocked",
                 "progress": 0.0,
                 "explanation": f"Blocked by: {', '.join(deps)} —"
                 " cannot progress until it is done or verified.",
@@ -125,10 +146,30 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
                 "progress": 0.0,
                 "explanation": f"In progress, due {n['due_at']}.",
             }
+        resumed = _resumed_at(n)
+        if resumed and (today - resumed).days <= 14:
+            return {
+                "state": "recovering",
+                "progress": 0.0,
+                "explanation": f"Recovering: resumed {resumed.isoformat()} — back in active work.",
+            }
+        owner = n.get("owner_role")
+        if owner in ("client", "vendor", "external"):
+            return {
+                "state": "waiting-external",
+                "progress": 0.0,
+                "explanation": f"Waiting externally ({owner}) — silence is not a failure.",
+            }
+        if owner in ("cho", "employee"):
+            return {
+                "state": "growing",
+                "progress": 0.0,
+                "explanation": "In progress (no deadline agreed — decays nothing).",
+            }
         return {
-            "state": "growing",
+            "state": "unknown",
             "progress": 0.0,
-            "explanation": "In progress (no deadline agreed — decays nothing).",
+            "explanation": "Unknown: no deadline, cadence or ownership data — nothing is invented.",
         }
 
     def visit(n: dict) -> dict:
@@ -218,6 +259,15 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
                 + (f" meets the {n['cadence']} cadence" if cad else "")
                 + ".",
             }
+        pressed = _WORST.get(worst["state"], 0) >= _WORST["needs-attention"] or (
+            cad is not None and weeks >= 1 and progress < 0.75
+        )
+        if progress >= 0.5 and not pressed:
+            return {
+                "state": "stable",
+                "progress": progress,
+                "explanation": f"Stable: verified progress {progress:.0%}, no pressure.",
+            }
         extra = f", {len(kids) - len(act)} paused" if len(kids) > len(act) else ""
         return {
             "state": "growing",
@@ -228,3 +278,68 @@ def project_health(nodes: list[dict], edges: list[dict], today: date) -> dict:
     for n in sorted(nodes, key=lambda x: x["id"]):
         visit(n)
     return {"nodes": healths}
+
+
+def dimensions(nodes: list[dict], edges: list[dict], today: date) -> dict:
+    """G31-E: three INDEPENDENT dimensions per node — never collapsed into one
+    score. execution = the health projection above (progress per commitments);
+    attention = from the responsibility model (required / waiting / clear);
+    outcome = EVIDENCE, the only accepted proof of business result: 'seed'
+    (nothing completed), 'unproven' (completions without recorded outcomes —
+    completing a task does not prove a positive outcome), 'evidenced' (>=1
+    completion carries an evidence edge to an outcome record — negative
+    results count as evidence, never as failure)."""
+    from pixel_startup.graph.attention import attention as _att
+
+    proj = project_health(nodes, edges, today)["nodes"]
+    kids: dict[str | None, list[dict]] = {}
+    for n in nodes:
+        kids.setdefault(n.get("parent_id"), []).append(n)
+
+    def descendants(node_id: str) -> list[dict]:
+        out, stack = [], [node_id]
+        while stack:
+            cur = stack.pop()
+            for k in kids.get(cur, []):
+                if k["id"] != node_id:
+                    out.append(k)
+                    stack.append(k["id"])
+        return out
+
+    by_from: dict[str, bool] = {}  # completed node -> evidence edge exists (either direction)
+    for e in edges:
+        if e["kind"] == "evidence":
+            by_from[e["from_id"]] = True
+            by_from[e["to_id"]] = True
+
+    out = {}
+    for n in nodes:
+        health = proj[n["id"]]
+        act = _att(n, today)
+        att = (
+            "required"
+            if act["requires_action"]
+            else ("waiting-external" if act["state"] == "waiting" else "clear")
+        )
+        kids_here = descendants(n["id"]) + [n]
+        if att == "clear":
+            for k in kids_here:
+                ka = _att(k, today)
+                if ka["requires_action"]:
+                    att = "required"
+                    break
+        done = [k for k in descendants(n["id"]) if k["status"] == "done" or k.get("verified")]
+        if not done and (n["status"] not in ("done",) and not n.get("verified")):
+            outcome = "seed"
+        elif any(by_from.get(k["id"]) for k in done):
+            outcome = "evidenced"
+        else:
+            outcome = "unproven"
+        if n["id"] in by_from:
+            outcome = "evidenced"
+        out[n["id"]] = {
+            "execution": health["state"],
+            "attention": att,
+            "outcome": outcome,
+        }
+    return out

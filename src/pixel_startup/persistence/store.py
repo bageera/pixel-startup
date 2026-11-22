@@ -683,8 +683,8 @@ class GraphStore:
                 sets.append(f"{setattr_row} = ?")
                 args.append(value)
         if "verified" in patch:
-            if row["kind"] not in ("milestone", "task"):
-                raise ValueError("verified applies to milestones and tasks")
+            if row["kind"] not in ("milestone", "task", "capability"):
+                raise ValueError("verified applies to milestones, tasks and capabilities")
             if patch["verified"] not in (0, 1, True, False):
                 raise ValueError("verified must be 0/1")
             sets.append("verified = ?")
@@ -695,6 +695,19 @@ class GraphStore:
             elif row["status"] == "done":
                 sets.append("status = ?")
                 args.append("active")
+        if patch.get("status") == "active" and row["status"] == "paused":
+            # G31-E recovering: record the unpause date (drives recovering state)
+            import json as _json
+
+            try:
+                det = _json.loads(row.get("detail") or "{}")
+                if not isinstance(det, dict):
+                    det = {}
+            except (TypeError, ValueError):
+                det = {}
+            det["resumed_at"] = _now()[:10]
+            sets.append("detail = ?")
+            args.append(_json.dumps(det))
         if not sets:
             return row  # nothing to change: return current, honest no-op
         sets.append("updated_at = ?")

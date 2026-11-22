@@ -93,6 +93,46 @@ def archived(im):
     px(im, 7, 6, GOLD); px(im, 8, 6, GOLD)  # latch
 
 
+SHAPE = (255, 152, 0)   # stable — equal-armed plus
+CYAN = (38, 198, 218)   # waiting-external — hourglass
+VIOLET = (149, 117, 205)  # blocked — hand / stop
+WIND = (255, 224, 178)    # recovering — half-full leaf
+
+
+def stable(im):
+    hline(im, 4, 11, 8, SHAPE)
+    vline(im, 7, 5, 12, SHAPE)
+    px(im, 4, 3, GREEN); px(im, 11, 12, GREEN)  # balanced accents
+
+
+def blocked(im):
+    vline(im, 7, 4, 12, TRUNK)
+    for x in range(4, 12):
+        px(im, x, 5 - (1 if x < 8 else 0) + (x - 4), VIOLET)  # diagonal bar
+
+
+def waiting(im):
+    hline(im, 5, 10, 4, CYAN)
+    hline(im, 6, 9, 5, CYAN)
+    px(im, 7, 6, CYAN); px(im, 8, 7, CYAN); px(im, 7, 7, CYAN)
+    hline(im, 6, 9, 11, CYAN)
+    hline(im, 5, 10, 12, CYAN)
+
+
+def recovering(im):
+    vline(im, 8, 8, 13, TRUNK)
+    hline(im, 9, 12, 10, WIND)
+    px(im, 8, 6, LEAF); px(im, 7, 7, LEAF)
+
+
+def unknown(im):
+    for x, y in [(7, 4), (6, 5), (5, 6), (5, 7), (5, 8), (6, 9), (7, 10),
+                 (8, 10), (9, 4), (10, 5), (11, 6), (11, 7), (11, 8), (10, 9),
+                 (9, 10), (10, 10), (7, 12), (8, 12)]:
+        px(im, x, y, GRAY)
+    px(im, 7, 7, GRAY); px(im, 8, 7, GRAY)  # hollow circle: honestly unresolved
+
+
 SPRITES = {
     "seed": seed,
     "growing": growing,
@@ -102,6 +142,11 @@ SPRITES = {
     "dormant": dormant,
     "completed": completed,
     "archived": archived,
+    "stable": stable,
+    "blocked": blocked,
+    "waiting-external": waiting,
+    "recovering": recovering,
+    "unknown": unknown,
 }
 
 

@@ -88,6 +88,35 @@ async def get_impact(
     return dependency_impact(nodes, edges, date.today())
 
 
+@router.get("/api/v1/scene")
+async def get_scene(
+    request: Request,
+    scope: str = "company",
+    theme: str = "office",
+    if_none_match: str | None = Header(None),
+    _auth: str = Depends(require_auth),
+):
+    """G31-F/G: CHO-mode requirement resolver -> versioned scene manifest."""
+    from hashlib import md5
+
+    from fastapi.responses import JSONResponse
+
+    from pixel_startup.graph.scene import scene_manifest
+
+    if scope not in ("company", "household"):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="scope must be company or household")
+    store = _graph(request)
+    nodes, edges = store.list(scope)
+    mood = _mood(request)
+    manifest = scene_manifest(nodes, edges, mood, scope, date.today(), theme=theme)
+    etag = 'W/"sc-%s"' % md5(manifest["scene_revision"].encode()).hexdigest()[:12]
+    if if_none_match and etag in if_none_match:
+        return Response(status_code=304, headers={"ETag": etag})
+    return JSONResponse(manifest, headers={"ETag": etag})
+
+
 @router.get("/api/v1/graph")
 async def get_graph(
     request: Request,
