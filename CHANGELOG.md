@@ -3,7 +3,7 @@
 All notable changes to **Pixel Startup** (formerly "Pixel Office"; the visual environment keeps that name) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-23 (HEAD = 78699f0)
 
 ### Added
 - **Privacy: user/host data abstracted out of the tracked JS.** `email.js` ships generic demo accounts (`owner@…` on `EMAIL_DOMAIN`, default `example.com`) with ids/colors/categories intact and passwords still env-driven; `vault.js` tracks no default host, user or Vaultwarden URL; the node morning-briefing prompt (`server.js`) now describes the org by role (business entities, mail host, tracker, infrastructure) instead of listing real addresses, hostnames, LAN IPs, message counts, project names or financial figures; `LITELLM_API_URL` gets no tracked default (`unset = AI offline`, honestly). Real values flow in through env/`pixel-secrets`. See README for the env keys.
