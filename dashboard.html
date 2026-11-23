@@ -909,8 +909,9 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
             if (!strip) return;
             try {
                 const s = await (await fetch('/api/v1/office/state')).json();
-                const counts = s.task_counts || {};
-                const active = (s.active_tasks || []).slice(0, 5)
+                const t = s.tasks || {};
+                const counts = t.counts || {};
+                const active = (t.active || []).slice(0, 5)
                     .map(t => `${t.task_id}:${t.status}${t.employee_id ? '→' + t.employee_id : ''}`);
                 strip.innerHTML = `tasks: ` +
                     `created ${counts.created || 0} · dispatched ${counts.dispatched || 0} · running ${counts.running || 0} · completed ${counts.completed || 0} · failed ${counts.failed || 0}` +
