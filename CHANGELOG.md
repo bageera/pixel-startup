@@ -3,6 +3,13 @@
 All notable changes to **Pixel Startup** (formerly "Pixel Office"; the visual environment keeps that name) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [1.5.0] - 2026-11-23 (HEAD = 8134f61)
+
+### Added
+- **Chief-of-Staff assignment + task visibility (G36-3):** the dashboard Chief panel gains an agent-to-harness assign form (worker id/name/harness — posts the existing owner-only `/api/v1/office/onboard`; re-submitting the same worker id moves it to the chosen harness; grants `delegate.<harness>.task` + `email.check`/`email.read`) and a tasks strip (counts + 5 newest active rows from `GET /api/v1/office/state`). No backend change.
+
+---
+
 ## [1.4.0] - 2026-11-23 (HEAD = 7d7b9af)
 
 ### Added
