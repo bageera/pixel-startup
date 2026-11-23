@@ -84,7 +84,7 @@ def test_boot_registration_and_provider_records_growth(tmp_path) -> None:
             } <= ids
             db = container.providers["db"]
             n = db.conn.execute("SELECT COUNT(*) AS n FROM provider_records").fetchone()["n"]
-            assert n == 16  # 8 core + 8 infra rows synced at boot
+            assert n == 17  # 8 core + 8 infra + comms_email_read rows synced at boot
             office = (await httpx_get_state(app)).json()
             for provider in office["providers"]:
                 assert "endpoint" not in provider  # office read-model never leaks endpoints

@@ -521,6 +521,7 @@ def test_provider_records_sync_and_restart_recovery(tmp_path, hermes_home_qualif
                 "minio": "candidate",
                 "mattermost": "candidate",
                 "email": "candidate",
+                "comms_email_read": "candidate",
                 "odoo": "candidate",
                 "homeassistant": "candidate",
                 "rundeck": "candidate",
@@ -547,7 +548,7 @@ def test_provider_records_sync_and_restart_recovery(tmp_path, hermes_home_qualif
         async with fresh.router.lifespan_context(fresh):
             db2 = fresh.state.container.providers["db"]
             n = db2.conn.execute("SELECT COUNT(*) AS n FROM provider_records").fetchone()["n"]
-            assert n == 16  # 8 core + 8 infra rows synced at boot
+            assert n == 17  # 8 core + 8 infra + comms_email_read rows synced at boot
             assert (
                 db2.conn.execute("SELECT MAX(version) AS v FROM schema_migrations").fetchone()["v"]
                 >= 4

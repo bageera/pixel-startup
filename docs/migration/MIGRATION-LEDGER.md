@@ -921,3 +921,21 @@ Shipped the architecture spine:
   (theme reuses existing environment assets); team-grouping beyond harness
   bays needs a real grouping signal; floor-2 rendering waits floor navigation.
 Gates: 203 pytest (7 G33 tests) / 65 npm / pyright 0 / ruff clean. LOCAL.
+
+### G36 — agent email access + openclaw execution (2026-11-23)
+
+Owner: the harness must be able to CHECK email from python; openclaw must
+become a proper harness. Shipped:
+- `integrations/email_read.py` — inbox reading over the documented IMAP/SSH
+  transports (the node email.js contract, generic env defaults), `email.check`
+  + `email.read` as G10 capabilities with executor adapters (owner routes too).
+- `harnesses/openclaw.py` — task.submit through the gateway's documented
+  OpenAI-compatible chat-completions surface; task.result returns the stored
+  execution; WS-only operations remain honestly unsupported.
+- Office demo: `emp-mail-demo-01` ("Mail Runner", openclaw) onboarded with
+  grants [email.check, email.read]; capability execution verified end-to-end
+  (authorized → honest not-configured inside the executor; replay; deny).
+- Honest ceilings: no live IMAP creds in the demo pod (offline until env);
+  openclaw execution is single-turn (sessions/WS stay unimplemented);
+  `email.send` remains the G13 approval-gated path.
+Gates: 212 pytest (5 new) / 65 npm / pyright 0 / ruff clean+fmt. LOCAL.

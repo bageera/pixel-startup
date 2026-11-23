@@ -96,6 +96,8 @@ def _dispatch_task(db: Database, registry, audit: AuditStore, tasks: TaskStore, 
             "task_id": task_id,
             "dispatched": False,
             "reason": resp.get("reason", "harness does not support task.submit"),
+            # B1 = openclaw connectivity (gateway offline); dispatch itself now
+            # executes through the /v1/chat/completions surface when online.
             "blocker": "B5" if harness == "hermes" else "B1",
         }
         _audit(audit, task_id, json.dumps(result), "deny")

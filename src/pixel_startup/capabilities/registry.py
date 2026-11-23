@@ -63,6 +63,39 @@ CAPABILITIES: dict[str, Capability] = {
             " honestly (B1/B5), never fabricate."
         ),
     ),
+    "delegate.openclaw.task": Capability(
+        capability_id="delegate.openclaw.task",
+        adapter="delegate_task",
+        scopes=("company", "shared"),
+        requires_approval=False,
+        requires_credential=False,
+        credential_provider=None,
+        description=(
+            "G36-2: openclaw dispatch through the gateway's OpenAI-compatible"
+            " chat-completions surface (single-turn execution; offline cancels B1)."
+        ),
+    ),
+    "email.check": Capability(
+        capability_id="email.check",
+        adapter="email_check",
+        scopes=("company", "shared"),
+        requires_approval=False,
+        requires_credential=False,
+        credential_provider=None,
+        description=(
+            "Read-only INBOX summary for one office account over the documented"
+            " IMAP/SSH transports; account passwords never leave the adapter."
+        ),
+    ),
+    "email.read": Capability(
+        capability_id="email.read",
+        adapter="email_read",
+        scopes=("company", "shared"),
+        requires_approval=False,
+        requires_credential=False,
+        credential_provider=None,
+        description="Read-only single-message body fetch (BODY.PEEK; never marks seen).",
+    ),
 }
 
 

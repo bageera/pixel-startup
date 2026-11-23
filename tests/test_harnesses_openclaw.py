@@ -5,10 +5,7 @@ import httpx
 import pytest
 
 from pixel_startup.config import Settings
-from pixel_startup.harnesses.openclaw import (
-    OPERATIONS_WITHOUT_DOCUMENTED_INTERFACE,
-    OpenClawGatewayAdapter,
-)
+from pixel_startup.harnesses.openclaw import WS_ONLY_OPERATIONS, OpenClawGatewayAdapter
 from pixel_startup.main import create_app
 from pixel_startup.providers.registry import ProviderError, ProviderState
 
@@ -67,14 +64,12 @@ def test_undocumented_operations_never_call_the_wire() -> None:
         return httpx.Response(200, json={"data": []})
 
     adapter = _adapter_with(httpx.MockTransport(mock))
-    for op in OPERATIONS_WITHOUT_DOCUMENTED_INTERFACE:
+    for op in WS_ONLY_OPERATIONS:  # WebSocket-only surface: honestly refused here
         result = adapter.invoke(op)
-        assert result == {
-            "supported": False,
-            "operation": op,
-            "reason": "no documented gateway interface for this operation",
-        }
-    assert calls["n"] == 0  # no wire traffic for unsupported operations
+        assert result["supported"] is False
+        assert result["operation"] == op
+        assert "not implemented" in result["reason"]
+    assert calls["n"] == 0  # refusal without any wire traffic
 
 
 def test_unknown_operation_explicit() -> None:

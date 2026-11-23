@@ -25,6 +25,7 @@ from pixel_startup.api import (
     capabilities,
     chief,
     config_v1,
+    email_compat,
     gateway,
     health,
     office_compat,
@@ -33,6 +34,7 @@ from pixel_startup.api import (
 )
 from pixel_startup.api import environment as environment_api
 from pixel_startup.config import Settings, load_settings
+from pixel_startup.integrations.email_read import EmailInboxAdapter
 from pixel_startup.log import logger, setup_logging
 from pixel_startup.persistence.db import Database
 from pixel_startup.persistence.store import (
@@ -169,6 +171,22 @@ def _register_python_persistence(container: Container, settings: Settings) -> No
     container.providers["executor"].adapters["delegate_task"] = make_delegation_adapter(
         db, container.registry, container.providers["audit"]
     )
+
+    # email INBOX capability adapters backed by the audited comms_email_read
+    # provider; the executor redacts secret-looking keys from route output.
+
+    def _email_adapter(operation: str):
+        def run(payload: dict, employee_id: str, credential: object) -> dict:
+            _ = credential  # account passwords stay inside the adapter (env)
+            inbox = container.providers.get("comms_email_read")
+            if not isinstance(inbox, EmailInboxAdapter):
+                return {"error": "email reader not registered"}
+            return inbox.invoke(operation, payload)
+
+        return run
+
+    container.providers["executor"].adapters["email_check"] = _email_adapter("email.check")
+    container.providers["executor"].adapters["email_read"] = _email_adapter("email.read")
     container.providers["delegation_results"] = make_result_retriever(
         db, container.registry, container.providers["audit"]
     )
@@ -213,9 +231,17 @@ def _register_openclaw(container: Container, settings: Settings) -> None:
             implementation=adapter.implementation,
             handler=adapter,
             endpoint=adapter.gateway_url,
-            capabilities=["gateway.health", "agent.discovery"],
+            capabilities=[
+                "gateway.health",
+                "agent.discovery",
+                "task.submit",
+                "task.result",
+            ],
             priority=10,
-            detail="candidate: contract-tested vs mock; live rows BLOCKED (no gateway on host)",
+            detail=(
+                "candidate: OpenAI-compatible execution surface "
+                "(single-turn chat completions; WS-only ops stay unsupported)"
+            ),
         )
     )
     container.registry.transition(adapter.provider_id, ProviderState.CANDIDATE)
@@ -313,11 +339,13 @@ def _register_storage(container: Container, settings: Settings) -> None:
 def _register_comms(container: Container, settings: Settings) -> None:
     """G13: internal (Mattermost) + external (email) comms; honest BLOCKED rows."""
     from pixel_startup.integrations.comms import EmailAdapter, MattermostAdapter
+    from pixel_startup.integrations.email_read import EmailInboxAdapter
 
     channels = tuple(c.strip() for c in settings.mattermost_channels.split(",") if c.strip())
     mattermost = MattermostAdapter(settings.mattermost_url, settings.mattermost_token, channels)
     email = EmailAdapter()  # transport injected when live SMTP creds exist (B3)
-    for provider_id, category, handler, endpoint, caps, detail in (
+    inbox = EmailInboxAdapter()  # inbox reading (IMAP/SSH per email.js contract)
+    for provider_id, category, handler, endpoint, caps, detail, implementation in (
         (
             "mattermost",
             ProviderCategory.COMMS_INTERNAL,
@@ -325,6 +353,7 @@ def _register_comms(container: Container, settings: Settings) -> None:
             settings.mattermost_url,
             mattermost.capabilities,
             "candidate: contract-tested vs synthetic transport; live rows BLOCKED (no creds)",
+            "external",
         ),
         (
             "email",
@@ -333,13 +362,23 @@ def _register_comms(container: Container, settings: Settings) -> None:
             None,
             email.capabilities,
             "candidate: contract-tested vs synthetic transport; live rows BLOCKED (no creds)",
+            "external",
+        ),
+        (
+            inbox.provider_id,
+            ProviderCategory.COMMS_EXTERNAL,
+            inbox,
+            os.environ.get("EMAIL_IMAP_HOST") or None,
+            inbox.capabilities,
+            "INBOX reading over the documented IMAP/SSH transports; offline when env is absent",
+            "python",
         ),
     ):
         container.registry.register(
             ProviderRegistration(
                 provider_id=provider_id,
                 category=category,
-                implementation="external",
+                implementation=implementation,
                 handler=handler,
                 endpoint=endpoint,
                 capabilities=list(caps),
@@ -350,6 +389,7 @@ def _register_comms(container: Container, settings: Settings) -> None:
         container.registry.transition(provider_id, ProviderState.CANDIDATE)
     container.providers["comms_mattermost"] = mattermost
     container.providers["comms_email"] = email
+    container.providers["comms_email_read"] = inbox
 
 
 def _register_infra(container: Container, settings: Settings) -> None:
@@ -513,6 +553,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chief.router)  # G23 BEFORE the gateway catch-all: native wins
     app.include_router(ai_compat.router)  # AI Director chat/status: BEFORE the catch-all
     app.include_router(office_layout.router)  # G33 Office of Requirement
+    app.include_router(email_compat.router)  # email INBOX reading (comms_email_read)
     from pixel_startup.api import graph as graph_api
 
     app.include_router(graph_api.router)  # G30: living-startup organizational graph

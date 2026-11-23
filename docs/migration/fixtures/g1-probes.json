@@ -434,7 +434,7 @@
       "status": 200,
       "bodyShape": {
         "agents": {
-          "array": 3,
+          "array": 2,
           "of": {
             "detail": "string",
             "key": "string",
@@ -458,7 +458,7 @@
           },
           "runtime": "string",
           "sessions": {
-            "array": 3,
+            "array": 1,
             "of": {
               "pid": "number",
               "session_id": "string",
