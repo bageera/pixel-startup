@@ -3,6 +3,13 @@
 All notable changes to **Pixel Startup** (formerly "Pixel Office"; the visual environment keeps that name) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [1.6.0] - 2026-11-23 (HEAD = c3d42cf)
+
+### Added
+- **Chief/owner dispatch (G36-4):** the Chief panel gains a task Dispatch row (worker select populated with server-verified binding ids, objective, optional plan review) that stores + dispatches through the real capability chain (`POST /api/v1/capabilities/execute` `delegate.<harness>.task`); rows persist before dispatch, dispatch is audited, and failures stay honest (B1 gateway-offline cancels). Supporting: `/api/v1/office/state` ships each grant-holding worker's verified `binding_id`; malformed delegations answer an honest 400 (executor re-raises `DelegationFailure`, route maps it — with test); the tasks strip renders the verbatim status counts incl. `cancelled`/`planning`.
+
+---
+
 ## [1.5.0] - 2026-11-23 (HEAD = 8134f61)
 
 ### Added
