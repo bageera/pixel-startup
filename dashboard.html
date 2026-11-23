@@ -882,8 +882,67 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
                     }
                 };
                 document.getElementById('chiefChannelsSave').onclick = saveChiefChannels;
+                // G36-3: assign a worker to a harness (CHO action; re-onboarding the
+                // same employee_id reassigns/moves it — onboard is an upsert).
+                const assignBar = document.createElement('span');
+                assignBar.style.cssText = 'border-left:1px solid #26263a; padding-left:10px; display:flex; gap:4px; align-items:center; flex-wrap:wrap;';
+                assignBar.innerHTML =
+                    `<input id="assignEmpId" class="bg-slate-900 border border-slate-600 rounded text-xs p-0.5 text-slate-200" placeholder="worker id…" style="width:110px;"> ` +
+                    `<input id="assignEmpName" class="bg-slate-900 border border-slate-600 rounded text-xs p-0.5 text-slate-200" placeholder="name…" style="width:100px;"> ` +
+                    `<select id="assignHarness" class="bg-slate-900 border border-slate-600 rounded text-xs p-0.5 text-slate-200">
+                        <option value="openclaw">openclaw</option><option value="hermes">hermes</option>
+                    </select> ` +
+                    `<button id="assignBtn" class="bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold py-0.5 px-2 rounded" title="Register + bind + verify this worker to the harness (POST /api/v1/office/onboard). Same worker id = move to the chosen harness. Grants: delegate task + email read.">Assign →</button> ` +
+                    `<button id="assignRefresh" class="bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-bold py-0.5 px-2 rounded" title="Refresh roster + tasks">↻</button> ` +
+                    `<span id="tasksStrip" style="color:var(--text);">tasks: …</span>` +
+                    `<span id="assignMsg" style="color:var(--ok);"></span>`;
+                body.appendChild(assignBar);
+                document.getElementById('assignBtn').onclick = assignAgent;
+                document.getElementById('assignRefresh').onclick = refreshTasksStrip;
+                refreshTasksStrip();
             } catch (e) {
                 body.textContent = 'chief channels unavailable (' + e.message + ')';
+            }
+        }
+        async function refreshTasksStrip() {
+            const strip = document.getElementById('tasksStrip');
+            if (!strip) return;
+            try {
+                const s = await (await fetch('/api/v1/office/state')).json();
+                const counts = s.task_counts || {};
+                const active = (s.active_tasks || []).slice(0, 5)
+                    .map(t => `${t.task_id}:${t.status}${t.employee_id ? '→' + t.employee_id : ''}`);
+                strip.innerHTML = `tasks: ` +
+                    `created ${counts.created || 0} · dispatched ${counts.dispatched || 0} · running ${counts.running || 0} · completed ${counts.completed || 0} · failed ${counts.failed || 0}` +
+                    (active.length ? ` <span style="color:var(--text-dim);">| ${active.join(' · ')}</span>` : '');
+            } catch (e) { strip.textContent = 'tasks: (unavailable)'; }
+        }
+        async function assignAgent() {
+            const msg = document.getElementById('assignMsg');
+            msg.textContent = '';
+            const id = document.getElementById('assignEmpId').value.trim();
+            const name = document.getElementById('assignEmpName').value.trim() || id;
+            const harness = document.getElementById('assignHarness').value;
+            if (!id) { msg.style.color = 'var(--bad)'; msg.textContent = 'worker id required'; return; }
+            try {
+                const r = await fetch('/api/v1/office/onboard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        employee_id: id, display_name: name, harness: harness,
+                        native_agent_id: harness + '-' + id, harness_instance_id: 'inst-' + id,
+                        grants: ['delegate.' + harness + '.task', 'email.check', 'email.read'],
+                    })
+                });
+                if (!r.ok) throw new Error('http ' + r.status);
+                const out = await r.json();
+                msg.style.color = 'var(--ok)';
+                msg.textContent = `assigned ${out.employee.employee_id} → ${out.employee.harness} (binding verified)`;
+                refreshTasksStrip();
+                setTimeout(() => { msg.textContent = ''; }, 6000);
+            } catch (e) {
+                msg.style.color = 'var(--bad)';
+                msg.textContent = 'assign failed (' + e.message + ')';
             }
         }
         async function saveChiefChannels() {
