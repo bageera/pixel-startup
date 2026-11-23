@@ -148,8 +148,9 @@ async def office_state(request: Request) -> dict:
     db: Database = container.providers["db"]
 
     store = EmployeeStore(db)
-    employees = [
-        {
+    employees = []
+    for e in store.all():
+        row = {
             "employee_id": e["employee_id"],
             "display_name": e["display_name"],
             "sprite_id": e["sprite_id"],
@@ -158,8 +159,13 @@ async def office_state(request: Request) -> dict:
             "harness": e["harness"],
             "binding_verified": bool(e["verified_binding"]),
         }
-        for e in store.all()
-    ]
+        # store.all() already parsed verified_binding into a dict
+        vb = e.get("verified_binding") or {}
+        grant = f"delegate.{e['harness']}.task"
+        grants = e.get("authorization_context") or []
+        if isinstance(vb, dict) and vb.get("binding_id") and grant in grants:
+            row["binding_id"] = vb["binding_id"]
+        employees.append(row)
 
     task_counts: dict[str, int] = {}
     for row in db.conn.execute(

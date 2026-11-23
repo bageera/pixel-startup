@@ -22,6 +22,7 @@ import json
 import secrets
 from typing import Any, Callable
 
+from pixel_startup.capabilities.delegation import DelegationFailure
 from pixel_startup.capabilities.providers import (
     CredentialProvider,
     ProviderUnavailable,
@@ -233,6 +234,12 @@ class CapabilityExecutor:
         except CapabilityDenied:
             self._finish(request_key, "denied", {})
             self._audit(employee_id, capability_id, scope, workload, "deny", request_key)
+            raise
+        except DelegationFailure:
+            # a malformed/invalid delegation is a caller error, not a server
+            # fault — record error, then let the route answer an honest 400.
+            self._finish(request_key, "failed", {})
+            self._audit(employee_id, capability_id, scope, workload, "error", request_key)
             raise
         except Exception:
             self._finish(request_key, "failed", {})

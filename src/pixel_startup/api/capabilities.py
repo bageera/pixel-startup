@@ -140,3 +140,7 @@ async def execute_capability(request: Request, auth_method: str = Depends(requir
         return executor.execute(request_body)
     except CapabilityDenied:
         raise HTTPException(status_code=403, detail="capability execution denied") from None
+    except DelegationFailure as exc:
+        # refusal at the delegation boundary is client-side (missing target/
+        # objective, unknown worker), not a server fault — 400, honest detail.
+        raise HTTPException(status_code=400, detail=str(exc)) from None

@@ -897,6 +897,18 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
                     `<span id="tasksStrip" style="color:var(--text);">tasks: …</span>` +
                     `<span id="assignMsg" style="color:var(--ok);"></span>`;
                 body.appendChild(assignBar);
+                // G36-4: delegate a task to a bound worker (owner session; the task
+                // row persists BEFORE dispatch and dispatch is audited + honest).
+                const delegateBar = document.createElement('span');
+                delegateBar.style.cssText = 'display:flex; gap:4px; align-items:center; flex-wrap:wrap; width:100%;';
+                delegateBar.innerHTML =
+                    `<select id="delegateTarget" class="bg-slate-900 border border-slate-600 rounded text-xs p-0.5 text-slate-200" title="Verified-bound worker"><option value="">worker…</option></select> ` +
+                    `<input id="delegateObjective" class="bg-slate-900 border border-slate-600 rounded text-xs p-0.5 text-slate-200" placeholder="objective…" style="width:240px;"> ` +
+                    `<label class="text-xs" style="color:var(--text);cursor:pointer;"><input type="checkbox" id="delegatePlan" style="vertical-align:middle;"> plan review</label> ` +
+                    `<button id="delegateBtn" class="bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold py-0.5 px-2 rounded" title="POST /api/v1/capabilities/execute delegate.<harness>.task — row persisted before dispatch; openclaw executes via chat-completions, hermes cancels honestly (B5).">Dispatch</button> ` +
+                    `<span id="delegateMsg" style="color:var(--ok);"></span>`;
+                body.appendChild(delegateBar);
+                document.getElementById('delegateBtn').onclick = delegateTask;
                 document.getElementById('assignBtn').onclick = assignAgent;
                 document.getElementById('assignRefresh').onclick = refreshTasksStrip;
                 refreshTasksStrip();
@@ -906,6 +918,7 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
         }
         async function refreshTasksStrip() {
             const strip = document.getElementById('tasksStrip');
+            const targetSel = document.getElementById('delegateTarget');
             if (!strip) return;
             try {
                 const s = await (await fetch('/api/v1/office/state')).json();
@@ -914,9 +927,56 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
                 const active = (t.active || []).slice(0, 5)
                     .map(t => `${t.task_id}:${t.status}${t.employee_id ? '→' + t.employee_id : ''}`);
                 strip.innerHTML = `tasks: ` +
-                    `created ${counts.created || 0} · dispatched ${counts.dispatched || 0} · running ${counts.running || 0} · completed ${counts.completed || 0} · failed ${counts.failed || 0}` +
+                    Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(' · ') +
                     (active.length ? ` <span style="color:var(--text-dim);">| ${active.join(' · ')}</span>` : '');
+                if (targetSel) {
+                    const cur = targetSel.value;
+                    const workers = (s.employees || []).filter(e => e.binding_verified && e.binding_id)
+                        .map(e => `<option value="${e.employee_id}" data-binding="${e.binding_id}">${e.display_name} (${e.harness})</option>`);
+                    targetSel.innerHTML = '<option value="">worker…</option>' + workers.join('');
+                    targetSel.value = cur;
+                }
             } catch (e) { strip.textContent = 'tasks: (unavailable)'; }
+        }
+        async function delegateTask() {
+            const msg = document.getElementById('delegateMsg');
+            msg.textContent = '';
+            const target = document.getElementById('delegateTarget').value;
+            const objective = document.getElementById('delegateObjective').value.trim();
+            if (!target || !objective) { msg.style.color = 'var(--bad)'; msg.textContent = 'worker + objective required'; return; }
+            const opt = document.querySelector(`#delegateTarget option[value="${target}"]`);
+            const bindingId = opt && opt.dataset.binding;
+            const harness = opt && ((opt.textContent.match(/\((\w+)\)$/) || [])[1]);
+            if (!bindingId || !harness) { msg.style.color = 'var(--bad)'; msg.textContent = 'worker is not dispatchable'; return; }
+            const body = {
+                binding_id: bindingId,
+                capability: `delegate.${harness}.task`,
+                scope: 'company',
+                request_key: 'ui-' + crypto.randomUUID(),
+                payload: {
+                    target_employee_id: target,
+                    objective: objective,
+                    ...((document.getElementById('delegatePlan').checked) ? { plan_required: true } : {}),
+                },
+            };
+            try {
+                const r = await fetch('/api/v1/capabilities/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error((data.error && data.error.message) || ('http ' + r.status));
+                msg.style.color = 'var(--ok)';
+                msg.textContent = data.planning
+                    ? `held for plan review (${data.approval_request_id || data.task_id})`
+                    : (data.dispatched ? `dispatched ${data.task_id}` : `${data.task_id}: ${data.reason || 'not dispatched'}`);
+                refreshTasksStrip();
+                setTimeout(() => { msg.textContent = ''; }, 8000);
+            } catch (e) {
+                msg.style.color = 'var(--bad)';
+                msg.textContent = 'dispatch failed (' + e.message + ')';
+            }
         }
         async function assignAgent() {
             const msg = document.getElementById('assignMsg');

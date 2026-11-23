@@ -1,6 +1,6 @@
 {
   "boot": {
-    "startupMs": 308,
+    "startupMs": 309,
     "log": [
       "[DEPRECATED] node backend is in strangler mode as of the G20 cutover: python (pixel_startup) fronts this service; migrate routes to python and retire this process once the /api surface is fully native.",
       "Using initial configuration",

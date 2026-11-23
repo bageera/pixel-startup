@@ -467,3 +467,55 @@ def test_verification_absent_label_keeps_old_semantics(tmp_path) -> None:
         result["task_id"]
     )
     assert out["status"] == "completed" and out["verification"] is None
+
+
+def test_delegation_refusal_is_400_not_500(tmp_path) -> None:
+    """G36-4: a malformed delegation is a client error — honest 400, not 500."""
+    from fastapi.testclient import TestClient
+
+    from pixel_startup.api.capabilities import router
+    from pixel_startup.config import Settings
+    from pixel_startup.main import create_app
+    from pixel_startup.security.auth import create_session_cookie
+
+    app = create_app(
+        Settings(
+            pixel_data_dir=str(tmp_path / "d"),
+            pixel_api_token="t",
+            pixel_session_secret="test-session-secret",
+            dashboard_password="p",
+        )
+    )
+    app.include_router(router)
+    with TestClient(app) as client:
+        cookie = create_session_cookie("test-session-secret", ttl_seconds=9999)
+        auth = {"pixel_session": cookie}
+        # provision the worker through the HTTP surface (same thread as the app)
+        onb = client.post(
+            "/api/v1/office/onboard",
+            cookies=auth,
+            json={
+                "employee_id": "employee.tailor",
+                "display_name": "Tailor",
+                "harness": "openclaw",
+                "native_agent_id": "oc-tailor",
+                "harness_instance_id": "inst-t",
+                "grants": ["delegate.openclaw.task"],
+            },
+        )
+        assert onb.status_code == 200
+        binding_id = onb.json()["binding_id"]
+        # objective missing -> route maps the refusal to a 400 (was a 500)
+        r = client.post(
+            "/api/v1/capabilities/execute",
+            cookies=auth,
+            json={
+                "binding_id": binding_id,
+                "capability": "delegate.openclaw.task",
+                "scope": "company",
+                "request_key": "rkey-bad-delegation",
+                "payload": {"objective": "no target given"},
+            },
+        )
+        assert r.status_code == 400
+        assert "malformed delegation" in r.json()["error"]["message"]
