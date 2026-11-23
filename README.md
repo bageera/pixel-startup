@@ -1,10 +1,12 @@
 # Pixel Startup
 
-**Pixel Startup** is the persistent, multi-harness organizational operations platform behind the pixel office. **Pixel Office** remains the name of the visual office component you see here — the retro pixel-art environment with its characters (Curator, Charon, Wardog, Fixer, Tailor, Ghostface), rooms and speech bubbles.
+> Last updated: 2026-11-23 (Hemingway audit pass)
 
-> Formerly released as "Pixel Office" (npm package `pixel`); the platform identity moved to Pixel Startup with the Python backend migration (`docs/migration/`). Git history, upstream attribution and licenses are unchanged — see [CREDITS.md](CREDITS.md).
+Pixel Startup is the operating platform for a persistent, multi-harness organization. Pixel Office is its visual half: the retro pixel-art environment shown here, with its characters (Curator, Charon, Wardog, Fixer, Tailor, Ghostface), rooms and speech bubbles.
 
-A pixel office operated by a **Python backend** (FastAPI: office state, delegation with plan → owner-review → verify gates, a Chief of Staff LLM channel, and honest offline-first integrations), with the original node office surface as the visual component. Live since **v1.2.0**; the GHCR image is built by CI on every push and tag.
+> Formerly released as "Pixel Office" (npm package `pixel`). The platform identity moved to Pixel Startup with the Python backend migration (`docs/migration/`). Git history, upstream attribution and licenses are unchanged — see [CREDITS.md](CREDITS.md).
+
+A pixel office, run by a **Python backend**. FastAPI covers office state, delegation with plan → owner-review → verify gates, a Chief of Staff LLM channel, and honest offline-first integrations. The node surface remains the visual component. Live since **v1.2.0**. CI builds the GHCR image on every push and tag.
 
 > 🇪🇸 ¿Buscas la versión en español? Está al final de este documento, pero la referencia principal es ahora la versión en inglés.
 
@@ -24,12 +26,12 @@ A pixel office operated by a **Python backend** (FastAPI: office state, delegati
 
 ## ✨ Highlights
 
-- **Live pixel office** with retro sprites, speech bubbles, and five swappable original environments (Art Deco HQ, Mechanic Shop, Pirate Ship, Lost Boys Treehouse, **Silicon Garage**).
-- **Python operational backend** (`src/pixel_startup/`): office state snapshots, capability-guarded automation, delegation with owner approval, audit log, and SQLite persistence.
-- **Chief of Staff**: `GET /api/v1/chief/advise` (office + public-repo context through your LiteLLM provider), delegated tasks with an LLM plan draft, owner-only review, and independent verify-before-done (`verified` status; never a re-dispatch).
-- **Move-in readiness** (`GET /api/move-in`): chief human present (Ghostface), startup direction set, goals on the board — checklist + editing live on the dashboard's "Startup & Move-in" card.
-- **Honest integrations**: Hermes + OpenClaw presence, Mattermost/email comms, ChromaDB memory, MinIO storage — offline until configured, never fabricated.
-- **Password-protected dashboard** (`dashboard.html`) to edit agents, rooms and collision maps without touching code.
+- **Live pixel office.** Retro sprites, speech bubbles, five swappable original environments (Art Deco HQ, Mechanic Shop, Pirate Ship, Lost Boys Treehouse, **Silicon Garage**).
+- **Python operational backend** (`src/pixel_startup/`): office state snapshots, capability-guarded automation, delegation with owner approval, audit log, SQLite persistence.
+- **Chief of Staff**: `GET /api/v1/chief/advise` (office + public-repo context through your LiteLLM provider), delegated tasks with an LLM plan draft, owner-only review, independent verify-before-done (`verified` status; never a re-dispatch).
+- **Move-in readiness** (`GET /api/move-in`): chief human present (Ghostface), startup direction set, goals on the board. Checklist + editing live on the dashboard's "Startup & Move-in" card.
+- **Honest integrations**: Hermes + OpenClaw presence, Mattermost/email comms, ChromaDB memory, MinIO storage. Offline until configured, never fabricated.
+- **Password-protected dashboard** (`dashboard.html`): edit agents, rooms and collision maps without touching code.
 - **CI**: every push to `main` runs the full gate (pytest/ruff/pyright/pip-audit + node tests) and publishes `ghcr.io/bageera/pixel-startup-backend` (`latest` + semver tags).
 
 ## 🧱 Folder map
@@ -85,31 +87,39 @@ make restart  # stop → rebuild → start
 make pull     # run-side: pull the CI-published image instead of building
 ```
 
-Hides the office HUD chrome with the `◱ HUD` toggle (persists locally). The docker run is the same shape for deploy hosts: add `-v ~/.hermes:/hermes-home:ro -e HERMES_HOME=/hermes-home -e PIXEL_HERMES_LIVENESS=file` when Hermes runs beside the container (Docker Desktop VMs cannot see host pids, so the lease files are the liveness evidence there).
+The `◱ HUD` toggle hides the office HUD chrome. It persists locally.
+
+The docker run is the same shape for deploy hosts. Add `-v ~/.hermes:/hermes-home:ro -e HERMES_HOME=/hermes-home -e PIXEL_HERMES_LIVENESS=file` when Hermes runs beside the container. Docker Desktop VMs cannot see host pids, so the lease files are the liveness evidence there.
 
 ## 🧑‍💼 Onboarding the startup (deploy to your cluster)
 
-The rails exist; each integration flips live from `deploy/pixel-stack.yaml`'s `pixel-secrets` — offline stays honest if a key is absent.
+The rails exist. Each integration flips live from `deploy/pixel-stack.yaml`'s `pixel-secrets`. Offline stays honest if a key is absent.
 
 **1. Deploy + chat (required first).**
 ```bash
 kubectl apply -f deploy/pixel-stack.yaml   # after docker login ghcr.io
 ```
-Required keys in `pixel-secrets`: `DASHBOARD_PASSWORD`, `PIXEL_SESSION_SECRET`, `PIXEL_API_TOKEN`, `LITELLM_API_KEY` (office chat, briefings and the Chief's plan generation). Optional: `LITELLM_API_URL`/`LITELLM_MODEL` (defaults match `litellm.blacktech.dev`). Verify in-pod: `env | grep -c "^LITELLM_API_KEY="` → `1`, then a fetch to `$LITELLM_API_URL/v1/models` → status 200.
+Required keys in `pixel-secrets`: `DASHBOARD_PASSWORD`, `PIXEL_SESSION_SECRET`, `PIXEL_API_TOKEN`, `LITELLM_API_KEY` (office chat, briefings, Chief's plan generation). Optional: `LITELLM_API_URL`/`LITELLM_MODEL` (defaults match `litellm.blacktech.dev`). Verify in-pod: `env | grep -c "^LITELLM_API_KEY="` → `1`, then a fetch to `$LITELLM_API_URL/v1/models` → status 200.
 
-**2. Communications (`MATTERMOST_URL`, `MATTERMOST_TOKEN`, `MATTERMOST_CHANNELS`, exact env names).**
-G13 comms adapter: plan-review notifications + task reports, idempotent per correlation id, channel allowlist checked first. SMTP creds enable `email.compose` drafts (`email.send` stays owner-approval-gated). Verify: adapter configured at boot, a posted review lands in the channel, a replay adds no duplicate.
+**2. Communications (`MATTERMOST_URL`, `MATTERMOST_TOKEN`, `MATTERMOST_CHANNELS`).**
+
+The G13 comms adapter sends plan-review notifications and task reports. It is idempotent per correlation id and always checks the channel allowlist first. SMTP creds enable `email.compose` drafts. `email.send` stays owner-approval-gated. Verify: adapter configured at boot, a posted review lands in the channel, a replay adds no duplicate.
 
 **3. Memory + storage (`CHROMA_URL`, `CHROMA_TOKEN`, `MINIO_ENDPOINT`, `MINIO_BUCKET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`).**
-Scoped ChromaDB memory (G11) and MinIO objects (G12) go live; without them the office has no recall. Route over WireGuard if the endpoints aren't on-cluster.
+
+Scoped ChromaDB memory (G11) and MinIO objects (G12) go live. Without them the office has no recall. Route over WireGuard if the endpoints aren't on-cluster.
 
 **4. Autonomy — enable Hermes A2A (not a secret, an enable).**
-On the host running Hermes: `hermes gateway setup` (A2A_PORT + peer token), then verify the office pod binds the harness. This flips delegation dispatch on — the plan → owner-review → verify pipeline (Mattermost is the notification surface; the approvals-row record is the only authorization).
 
-**5. Later — OpenClaw (`OPENCLAW_GATEWAY_URL`/`TOKEN`) + Vaultwarden creds.** Presence chips and binding polish; not required to operate.
+On the host running Hermes: `hermes gateway setup` (A2A_PORT + peer token). Then verify the office pod binds the harness. This flips delegation dispatch on: plan → owner-review → verify. Mattermost is the notification surface. The approvals-row record is the only authorization.
+
+**5. Later — OpenClaw (`OPENCLAW_GATEWAY_URL`/`TOKEN`) + Vaultwarden creds.**
+
+Presence chips and binding polish. Not required to operate.
 
 **6. Register a harness employee (the org side of onboarding).**
-With the admin token: `POST /api/v1/office/onboard` — `{"employee_id", "display_name", "harness": "hermes", "native_agent_id", "harness_instance_id"}` → registers, binds + verifies the native identity (native-identity uniqueness is the impersonation guard), activates the lifecycle, returns the observed presence row. Re-onboarding refreshes a binding; a different employee claiming the same native identity is refused. `GET /api/v1/health/services` and the dashboard strip (Email / Communication / Memory & Storage buckets) confirm which integrations are connected — evidence only, never assumed.
+
+With the admin token: `POST /api/v1/office/onboard` — `{"employee_id", "display_name", "harness": "hermes", "native_agent_id", "harness_instance_id"}`. This registers, binds and verifies the native identity (native-identity uniqueness is the impersonation guard), activates the lifecycle, and returns the observed presence row. Re-onboarding refreshes a binding. A different employee claiming the same native identity is refused. `GET /api/v1/health/services` and the dashboard strip (Email / Communication / Memory & Storage buckets) confirm which integrations are connected — evidence only, never assumed.
 
 ## 🕹️ REST API (backend highlights)
 
@@ -128,7 +138,7 @@ Node office API: unchanged cheat sheet preserved in `server.js` (config, agents,
 
 ## 🌆 Office environments
 
-Five original packs ship generated (no copyrighted assets): `continental` (default), `mechanic-shop`, `pirate-ship`, `lost-boys-treehouse`, `garage` — «Silicon Garage», the silicon-valley startup garage. Selection persists via `pixel-config.json`/`app_settings` and survives restart with graceful fallback. Regenerate deterministically:
+Five original packs ship generated (no copyrighted assets): `continental` (default), `mechanic-shop`, `pirate-ship`, `lost-boys-treehouse`, `garage`. The last is «Silicon Garage», the silicon-valley startup garage. Selection persists via `pixel-config.json`/`app_settings` and survives restart with graceful fallback. Regenerate deterministically:
 
 ```bash
 python3 tools/generate-environments.py   # flat office packs (adds validate: BFS nav)
@@ -146,14 +156,14 @@ python3 tools/generate_environments.py   # isometric directory packs
 
 ## 📂 Data & assets
 
-- `sample-data/*.sample.json` → version-controlled demo config; `data/` → live state (gitignored).
+- `sample-data/*.sample.json` → version-controlled demo config. `data/` → live state (gitignored).
 - `assets/characters/` → MetroCity Free Topdown Character Pack by [JIK-a-4](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
 - `assets/environments/*` → generated original art (see 🌆 above).
-- `docs/media/` → screenshots; keep 1920px width when updating marketing shots.
+- `docs/media/` → screenshots. Keep 1920px width when updating marketing shots.
 
 ## 🎨 Credits & external assets
 
-- Inspired by [pixel-agents](https://github.com/pablodelucca/pixel-agents) by Pablo Delucca — this project reuses the idea of a pixelated OpenClaw office and adapts it to this stack.
+- Inspired by [pixel-agents](https://github.com/pablodelucca/pixel-agents) by Pablo Delucca. This project reuses the idea of a pixelated OpenClaw office and adapts it to this stack.
 - Character sprites come from the [MetroCity Free Topdown Character Pack](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack) by JIK-a-4. Review the itch.io license before redistributing; attribution is required.
 - The office background was built with [Office Interior Tileset (16x16)](https://donarg.itch.io/officetileset) by Donarg (USD $2). This is the only part of Pixel Office that is not freely available; the tileset is **not** included here because of its license. To use it locally, purchase the pack, export your layout as `assets/oficina.png`, and the app will pick it up automatically.
 
@@ -161,11 +171,11 @@ See [CREDITS.md](CREDITS.md) for a handy table you can keep updated.
 
 ## 📦 Deploy notes
 
-- **CI publishes the image**: push to `main` → `ghcr.io/bageera/pixel-startup-backend:latest`; a `v*` tag → `1.2.0` + `latest` (workflow: `.github/workflows/python-image.yml`, zero secrets — uses `GITHUB_TOKEN`). Pulling hosts: `docker login ghcr.io` once, then `docker pull ghcr.io/bageera/pixel-startup-backend:latest`.
+- **CI publishes the image.** Push to `main` → `ghcr.io/bageera/pixel-startup-backend:latest`. A `v*` tag → `1.2.0` + `latest`. Workflow: `.github/workflows/python-image.yml`, zero secrets — uses `GITHUB_TOKEN`. Pulling hosts: `docker login ghcr.io` once, then `docker pull ghcr.io/bageera/pixel-startup-backend:latest`.
 - Makefile shortcuts: `make python-setup`, `make python-test` (the full gate), `make test` (node), `make build`/`make run`/`make push-image` (node-era container), `make tag` (annotated SemVer tag from `package.json`), `make contracts` (node ⇄ python fixture parity).
-- Deployment manifests: `deploy/pixel-stack.yaml` (both pods inject `pixel-secrets` via `envFrom`; secrets rule: values never in chat/docs, `[REDACTED]` in anything tracked).
-- Releases: version lives in `package.json` + `pyproject.toml` (kept in sync with `uv.lock`); fold `CHANGELOG.md` `[Unreleased]` **before** tagging.
-- `.gitignore` already skips `.env`, `node_modules`, `data/`, backups and temp logs; notable changes go to [CHANGELOG.md](CHANGELOG.md).
+- Deployment manifests: `deploy/pixel-stack.yaml` (both pods inject `pixel-secrets` via `envFrom`). Secrets rule: values never in chat/docs, `[REDACTED]` in anything tracked.
+- Releases: version lives in `package.json` + `pyproject.toml` (kept in sync with `uv.lock`). Fold `CHANGELOG.md` `[Unreleased]` **before** tagging.
+- `.gitignore` already skips `.env`, `node_modules`, `data/`, backups and temp logs. Notable changes go to [CHANGELOG.md](CHANGELOG.md).
 
 ## ✅ Pre-share checklist
 
