@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from pixel_startup.api import (
+    ai_compat,
     capabilities,
     chief,
     config_v1,
@@ -509,6 +510,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(capabilities.router)
     app.include_router(office_state.router)
     app.include_router(chief.router)  # G23 BEFORE the gateway catch-all: native wins
+    app.include_router(ai_compat.router)  # AI Director chat/status: BEFORE the catch-all
     from pixel_startup.api import graph as graph_api
 
     app.include_router(graph_api.router)  # G30: living-startup organizational graph

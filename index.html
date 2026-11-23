@@ -1629,23 +1629,8 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                 return;
             }
 
-            // Calling Ollama API
+            // Calling Ollama API (server owns the nav JSON contract now)
             addChatMessage('AI Director', 'Thinking...', 'ai');
-            
-            const charsContext = characters.map(c => c.name).join(', ');
-            const roomsContext = window.roomsInfo.map(r => r.name).join(', ');
-            
-            const systemPrompt = `You are a navigation system for a virtual office.
-You will receive an instruction from a user and must extract which characters go to which rooms.
-Available characters: [${charsContext}].
-Available rooms: [${roomsContext}]. 
-Return ONLY a valid JSON array with the actions.
-If they say "everyone" or similar, include an individual action item for each available character.
-If the user indicates "wait", "stay" or "don't go out", add the property "wait": true.
-If the user explicitly specifies "sit" or "in a chair", add the property "sit": true.
-Example format:
-[{"character": "Rachel", "room": "Concierge", "wait": true, "sit": true}, {"character": "Juan", "room": "Lounge"}]
-Write NOTHING MORE than raw JSON, without code block markdown.`;
 
             // Call Ollama API via server-side proxy
             fetch('/api/ai/chat', {

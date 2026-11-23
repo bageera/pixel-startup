@@ -851,3 +851,17 @@ complete; never-degrade list holds (scope, evidence, attention, approvals).
 **Gates:** 189 pytest (5 new phase-4, S4 skip-gated) / 65 npm + 9 office-loop
 / pyright 0 / ruff clean+fmt. **Verdict: PASS with honest ceilings** (real
 60 Hz profiling + concurrency soak deferred; recorded as skips).
+
+### Node retirement: /api/ai/chat + /api/ai/status migrated (2026-11-23)
+
+The office AI Director still hit the legacy Node proxy → 501 "route not
+migrated" behind a "connected to litellm" provider row. Python routes
+`api/ai_compat.py` now own it BEFORE the gateway catch-all: chat invokes the
+audited litellm provider (registry path, zero private fetches; kiosk flag
+mirrors node's fail-open; 400 missing prompt; 502 on LLM down) and status
+mirrors /v1/models. The nav JSON contract is SERVER-owned (roster + rooms
+from the real store) — the client's dead local systemPrompt is deleted.
+Unmapped room names fall back to the closest available room so "everyone to
+the Lounge" fans out instead of `[]`. Live-verified: everyone → per-character
+actions, Archives/sit contract exact, no-auth 401, status lists glm-5.3-flash.
+Gate: 193 pytest (4 new, stubbed transport) / pyright 0 / ruff clean.
