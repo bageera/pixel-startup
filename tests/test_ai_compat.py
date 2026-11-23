@@ -8,8 +8,8 @@ asserted by the G30/G32 suites; these tests count the ONLY sanctioned calls).
 
 from __future__ import annotations
 
+import atexit
 import contextlib
-from pathlib import Path
 
 import anyio
 import httpx
@@ -20,8 +20,17 @@ from pixel_startup.main import create_app
 AUTH = {"Authorization": "Bearer ai-token"}
 
 
+def _tmp_fresh(sub: str) -> str:
+    import shutil
+    import tempfile
+
+    d = tempfile.mkdtemp(prefix="pixel-ai-test-")  # per-run fresh config state
+    atexit.register(shutil.rmtree, d, ignore_errors=True)
+    return d
+
+
 @contextlib.asynccontextmanager
-async def client(tmp_path: Path, litellm_calls: list | None = None, get_calls: list | None = None):
+async def client(litellm_calls: list | None = None, get_calls: list | None = None):
     from pixel_startup.integrations import infra
 
     def fake_post(_url, _token, path, body):
@@ -42,7 +51,7 @@ async def client(tmp_path: Path, litellm_calls: list | None = None, get_calls: l
     try:
         app = create_app(
             Settings(
-                pixel_data_dir=str(tmp_path / "data"),
+                pixel_data_dir=_tmp_fresh("data"),
                 dashboard_password="dash",
                 pixel_api_token="ai-token",
                 litellm_url="http://stub",
@@ -65,7 +74,7 @@ async def client(tmp_path: Path, litellm_calls: list | None = None, get_calls: l
 def test_g32_ai_chat_happy_path_goes_through_registry():
     async def drive():
         calls: list = []
-        async with client(Path(__file__).parent / "tmp-ai", litellm_calls=calls) as c:
+        async with client(litellm_calls=calls) as c:
             r = await c.post("/api/ai/chat", headers=AUTH, json={"prompt": "Hi"})
             assert r.status_code == 200
             data = r.json()
@@ -82,7 +91,7 @@ def test_g32_ai_chat_happy_path_goes_through_registry():
 
 def test_g32_ai_chat_requires_owner_session():
     async def drive():
-        async with client(Path(__file__).parent / "tmp-ai") as c:
+        async with client() as c:
             r = await c.post("/api/ai/chat", json={"prompt": "Hi"})
             assert r.status_code == 401  # no kiosk flag → node requireAuth parity
             missing = await c.post("/api/ai/chat", headers=AUTH, json={})
@@ -95,7 +104,7 @@ def test_g32_ai_chat_litellm_down_is_502():
     async def drive():
         from pixel_startup.integrations import infra
 
-        async with client(Path(__file__).parent / "tmp-ai") as c:
+        async with client() as c:
 
             def down_post(_url, _token, _path, _body):
                 raise ConnectionError("down")
@@ -112,7 +121,7 @@ def test_g32_ai_chat_litellm_down_is_502():
 def test_g32_ai_status_lists_models():
     async def drive():
         gets: list = []
-        async with client(Path(__file__).parent / "tmp-ai", get_calls=gets) as c:
+        async with client(get_calls=gets) as c:
             r = await c.get("/api/ai/status")
             assert r.status_code == 200
             body = r.json()
@@ -127,7 +136,7 @@ def test_g32_ai_status_lists_models():
 
 def test_g32_chief_toggle_persists_and_rejects_unknown():
     async def drive():
-        async with client(Path(__file__).parent / "tmp-ai") as c:
+        async with client() as c:
             # owner persists the chief harness via the same config channel
             save = await c.post(
                 "/api/config",
@@ -158,7 +167,7 @@ def test_g32_chief_toggle_persists_and_rejects_unknown():
 def test_g32_chief_mode_requires_harness_and_uses_real_context():
     async def drive():
         calls: list = []
-        async with client(Path(__file__).parent / "tmp-ai", litellm_calls=calls) as c:
+        async with client(litellm_calls=calls) as c:
             no_choice = await c.post(
                 "/api/ai/chat", headers=AUTH, json={"prompt": "status report", "mode": "chief"}
             )
@@ -183,6 +192,53 @@ def test_g32_chief_mode_requires_harness_and_uses_real_context():
             # grounded ONLY in observed state: the G8 probe result + real task rows
             owner = calls[0]["messages"][1]["content"]
             assert "CONNECTED HARNESS (hermes)" in owner
+            assert "COMMUNICATION CHANNELS: the office chat" in owner
+            assert "no extra channels enabled" in owner
             assert "TASK COUNTS BY STATUS" in owner and "ROSTER:" in owner
+
+    anyio.run(drive)
+
+
+def test_g32_chief_channels_observed_and_validated():
+    async def drive():
+        calls: list = []
+        async with client(litellm_calls=calls) as c:
+            first = await c.get("/api/v1/chief/channels", headers=AUTH)
+            assert first.status_code == 200
+            data = first.json()
+            assert data["office"] is True
+            assert data["configured"] == {
+                "mattermost": False,
+                "email": False,
+            }  # honest: no live creds
+            assert data["allowed"] == []
+
+            save = await c.post(
+                "/api/v1/chief/channels",
+                headers=AUTH,
+                json={"allowed": ["mattermost", "bogus-svc", "email"]},
+            )
+            assert save.status_code == 200
+            assert save.json()["allowed"] == ["email", "mattermost"]  # sorted, unknowns dropped
+
+            again = await c.get("/api/v1/chief/channels", headers=AUTH)
+            assert again.json()["allowed"] == ["email", "mattermost"]
+            # survived a full office config save (shape guard, no erasure)
+            cfg = await c.get("/api/config")
+            assert cfg.json()["startup"]["chief_channels"] == ["email", "mattermost"]
+
+            # the enabled channels reach the chief prompt with their HONEST state
+            await c.post(
+                "/api/config",
+                headers=AUTH,
+                json={"agents": [], "rooms": [], "startup": {"chief_harness": "hermes"}},
+            )
+            await c.post(
+                "/api/ai/chat",
+                headers=AUTH,
+                json={"prompt": "tell customers we shipped", "mode": "chief"},
+            )
+            owner = calls[0]["messages"][1]["content"]
+            assert "mattermost (internal)" in owner and "NOT configured" in owner
 
     anyio.run(drive)

@@ -121,6 +121,81 @@ def _chief_context(request: Request, harness: str) -> str:
     return "\n".join(parts)
 
 
+_CHANNELS = ("mattermost", "email")  # selectable extras; "office" chat is inherent
+
+
+def _comms_observation(request: Request) -> dict:
+    """Honest per-channel availability from the G13 adapters themselves."""
+    providers = request.app.state.container.providers
+    return {
+        name: bool(
+            (adapter := providers.get("comms_" + name)) is not None
+            and getattr(adapter, "configured", False)
+        )
+        for name in _CHANNELS
+    }
+
+
+def _patch_startup(request: Request, patch: dict) -> dict:
+    """Owner mutation of startup keys via the full-payload save (wipe guards
+    keep agents/rooms verbatim; never a partial body)."""
+    office = office_from_app(request)
+    payload = office.config_payload()
+    payload["startup"] = {**office.startup, **patch}
+    return office.save_config(payload)["startup"]
+
+
+@router.get("/api/v1/chief/channels")
+async def chief_channels_get(request: Request, _auth: str = Depends(office_write_auth)) -> Any:
+    office = office_from_app(request)
+    return {
+        "chief_harness": str(office.startup.get("chief_harness", "") or ""),
+        "office": True,  # the AI Director chat itself is always available
+        "allowed": [c for c in (office.startup.get("chief_channels") or []) if c in _CHANNELS],
+        "configured": _comms_observation(request),
+    }
+
+
+@router.post("/api/v1/chief/channels")
+async def chief_channels_set(request: Request, _auth: str = Depends(office_write_auth)) -> Any:
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    raw = (body.get("allowed") if isinstance(body, dict) else None) or []
+    allowed = sorted({c for c in raw if c in _CHANNELS})  # unknowns ignored
+    startup = _patch_startup(request, {"chief_channels": allowed})
+    return {"success": True, "allowed": startup.get("chief_channels", [])}
+
+
+def _channels_note(request: Request) -> str:
+    configured = _comms_observation(request)
+    office = office_from_app(request)
+    allowed = [c for c in (office.startup.get("chief_channels") or []) if c in _CHANNELS]
+    lines = [
+        "COMMUNICATION CHANNELS: the office chat (here) is always available.",
+    ]
+    name = {
+        "mattermost": "mattermost (internal)",
+        "email": "email (external, delivered only after owner approval)",
+    }
+    if allowed:
+        for ch in allowed:
+            state = (
+                "configured/live"
+                if configured.get(ch)
+                else "selected by the owner but NOT configured (unavailable until live creds exist)"
+            )
+            lines.append(f"- {name[ch]}: {state}")
+    else:
+        lines.append("- no extra channels enabled: deliver everything in the office chat.")
+    lines.append(
+        "If asked to communicate through a channel not listed above, or one"
+        " that is unconfigured, say so honestly and keep it in the office chat."
+    )
+    return "\n".join(lines)
+
+
 _CHIEF_SYSTEM = (
     "You are the Chief of Staff of this virtual office, answering the owner."
     " Work from ONLY the provided data - never invent capabilities, tasks or"
@@ -183,7 +258,10 @@ async def _chief_chat(request: Request, prompt: str) -> JSONResponse:
                     {"role": "system", "content": _CHIEF_SYSTEM},
                     {
                         "role": "user",
-                        "content": f"{_chief_context(request, harness)}\n\nOWNER: {prompt}",
+                        "content": (
+                            f"{_chief_context(request, harness)}\n{_channels_note(request)}"
+                            f"\n\nOWNER: {prompt}"
+                        ),
                     },
                 ],
                 "max_tokens": 2048,

@@ -233,7 +233,15 @@ class OfficeState:
                     )
                     else merged.get("chief_harness", "")
                 )
+            chans = new.get("chief_channels")
+            if isinstance(chans, list):
+                # Chief of Staff communication channels; subset of the G13
+                # adapters (see ai_compat._CHANNELS); only these two survive.
+                merged["chief_channels"] = sorted(
+                    {c for c in chans if isinstance(c, str) and c in ("mattermost", "email")}
+                )
         merged.setdefault("chief_harness", "")
+        merged.setdefault("chief_channels", [])
         merged.setdefault("direction", "")
         merged.setdefault("goals", [])
         merged.setdefault("mood", "focused")

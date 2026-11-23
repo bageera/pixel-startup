@@ -202,6 +202,12 @@
             <span id="backendStripBody" style="display:flex;flex-wrap:wrap;gap:8px 16px;">checking…</span>
         </div>
 
+        <!-- CHIEF OF STAFF: harness + allowed communication channels (owner) -->
+        <div id="chiefPanel" class="shrink-0" style="padding:6px 12px; border-top:1px solid #26263a; font-size:12px; color:var(--text-dim); display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center;">
+            <span style="font-weight:600;color:var(--text);">Chief</span>
+            <span id="chiefPanelBody">checking…</span>
+        </div>
+
         <!-- CONTENT AREA -->
         <div class="flex-1 overflow-hidden relative bg-[#0f0f1a]">
             <!-- VIEW: LIVING STARTUP (G30 — lazy: rendered only when opened) -->
@@ -816,12 +822,59 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
             }
         }
 
+        // === Chief of Staff: harness + allowed communication channels (G33, owner) ===
+        let _chiefAllowed = [];
+        async function loadChiefPanel() {
+            const body = document.getElementById('chiefPanelBody');
+            if (!body) return;
+            try {
+                const r = await fetch('/api/v1/chief/channels');
+                if (r.status === 401) { body.textContent = 'owner session required to edit'; return; }
+                if (!r.ok) throw new Error('http ' + r.status);
+                const data = await r.json();
+                _chiefAllowed = data.allowed || [];
+                const harness = data.chief_harness || 'Director (nav only)';
+                const rows = [['office', 'office chat (always)', null, true]]
+                    .concat([['mattermost', 'Mattermost (internal)', data.configured && data.configured.mattermost, false],
+                             ['email', 'Email (external, owner-approval send)', data.configured && data.configured.email, false]]);
+                body.innerHTML =
+                    `<b style="color:var(--text);">${harness}</b> communicates in: ` +
+                    rows.map(([id, label, configured, fixed]) =>
+                        `<label style="margin-right:10px;cursor:${fixed ? 'default' : 'pointer'};" title="${fixed ? 'the office chat itself' : (configured ? 'configured — live delivery possible' : 'selected but NOT configured (no live creds yet — honest offline)')}">` +
+                        `<input type="checkbox" data-chief-channel="${id}" ${fixed ? 'checked disabled' : (_chiefAllowed.includes(id) ? 'checked' : '')} style="vertical-align:middle;"> ${label}` +
+                        (configured === false ? ' <i style="opacity:.6;">(not configured)</i>' : '') +
+                        `</label>`).join('') +
+                    `<button id="chiefChannelsSave" class="bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-bold py-0.5 px-2 rounded">Save</button> <span id="chiefMsg" style="color:var(--ok);"></span>`;
+                document.getElementById('chiefChannelsSave').onclick = saveChiefChannels;
+            } catch (e) {
+                body.textContent = 'chief channels unavailable (' + e.message + ')';
+            }
+        }
+        async function saveChiefChannels() {
+            const allowed = Array.from(document.querySelectorAll('input[data-chief-channel]:checked')).map(cb => cb.dataset.chiefChannel);
+            const msg = document.getElementById('chiefMsg');
+            try {
+                const r = await fetch('/api/v1/chief/channels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allowed })
+                });
+                if (!r.ok) throw new Error('http ' + r.status);
+                msg.textContent = 'saved';
+                setTimeout(loadChiefPanel, 1200);
+            } catch (e) {
+                msg.style.color = 'var(--bad)';
+                msg.textContent = 'save failed (' + e.message + ')';
+            }
+        }
+
         async function showDashboard() {
             document.getElementById('dashboardScreen').classList.remove('hidden');
             await loadAllData();
             initEnvironmentSelector(); // G22: env catalog + current selection
             loadMoveIn(); // G24: readiness + startup direction/goals
             loadBackendOps(); // G25: api/v1 services + roster strip
+            loadChiefPanel(); // G33: chief harness + communication channels
             // Default select
             setMapBrush('terrain', 1); // Select Wall
             

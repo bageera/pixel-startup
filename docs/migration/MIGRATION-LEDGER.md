@@ -883,3 +883,20 @@ tasks or reports on completed ones". Built on what already exists, honestly:
 - Live: chief answer cited the real gateway (online, pid, 1 active agent,
   mattermost) and "no tasks" truthfully; nav mode byte-identical as before.
 Gates: 195 pytest (2 new) / 65 npm / pyright 0 / ruff clean+fmt. Local only.
+
+### Chief communication channels (2026-11-23)
+
+Owner asks the dashboard to specify which channels the CHO may communicate
+in. Built on the existing G13 comms rows, honestly:
+- GET/POST `/api/v1/chief/channels` (owner): observation of `configured` from
+  the adapters themselves (mattermost url+token+client, email transport B3),
+  `office chat` always available; POST validates to (mattermost, email) and
+  persists via the full-payload save (wipe guards intact).
+- Dashboard: permanent "Chief" strip under the backend strip — harness,
+  channel checkboxes with "(not configured)" markers, save; 401 renders
+  "owner session required to edit" (no fake editing surface).
+- Chief prompt gains the per-channel state; unanswered channels are refused
+  honestly (verified live: "I won't route anything through it until that's
+  set up"). No delivery code added for unconfigured channels.
+- Tests moved to per-run temp dirs (test state leaked through shared tmp-ai).
+Gates: 197 pytest (channels test) / 65 npm / pyright 0 / ruff clean. LOCAL.

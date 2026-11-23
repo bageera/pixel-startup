@@ -65,6 +65,7 @@ def test_v1_config_shape_and_startup_roundtrip(tmp_path) -> None:
                 "goals": [],
                 "mood": "focused",
                 "chief_harness": "",
+                "chief_channels": [],
             }
 
             r = await c.post(
