@@ -1,18 +1,18 @@
 const { Client } = require('ssh2');
 const fs = require('fs');
 
-// Configuration
-const SSH_HOST = process.env.MAIL2_HOST || '159.65.183.161';
-const SSH_USER = process.env.MAIL2_USER || 'root';
+// Configuration — hosts/users come from env only; tracked defaults stay generic.
+const SSH_HOST = process.env.MAIL2_HOST || '';
+const SSH_USER = process.env.MAIL2_USER || '';
 const SSH_KEY_PATH = process.env.SSH_KEY_PATH || '/app/ssh/id_ed25519';
 
-// Gamma SSH for rbw access (rbw is installed on gateway, not on mail2)
-// We'll use gamma since that's where the pixel office runs
-const GAMMA_HOST = process.env.GAMMA_HOST || '192.168.15.230';
-const GAMMA_USER = process.env.GAMMA_USER || 'bageera';
+// Gateway SSH for rbw access (rbw is installed on the gateway, not on the mail host)
+// The office pod runs beside it, so the gateway is the vault access point.
+const GAMMA_HOST = process.env.GAMMA_HOST || 'gateway.local';
+const GAMMA_USER = process.env.GAMMA_USER || 'office';
 
-// Vaultwarden API credentials (from env or secrets)
-const VW_BASE_URL = process.env.VW_BASE_URL || 'https://bw.theblacktech.com';
+// Vaultwarden API credentials (from env or secrets); URL is env-only.
+const VW_BASE_URL = process.env.VW_BASE_URL || '';
 const VW_USER_CLIENT_ID = process.env.VW_USER_CLIENT_ID || '';
 const VW_USER_CLIENT_SECRET = process.env.VW_USER_CLIENT_SECRET || '';
 const VW_ORG_CLIENT_ID = process.env.VW_ORG_CLIENT_ID || '';

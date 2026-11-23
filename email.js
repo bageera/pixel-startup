@@ -2,53 +2,55 @@ const { Client } = require('ssh2');
 const fs = require('fs');
 const path = require('path');
 
-// Configuration from env
-const MAIL2_HOST = process.env.MAIL2_HOST || '159.65.183.161';
-const MAIL2_USER = process.env.MAIL2_USER || 'root';
+// Configuration from env — no host/user defaults are tracked; unset = offline.
+const MAIL2_HOST = process.env.MAIL2_HOST || '';
+const MAIL2_USER = process.env.MAIL2_USER || '';
 const SSH_KEY_PATH = process.env.SSH_KEY_PATH || '/app/ssh/id_ed25519';
 const EMAIL_IMAP_HOST = process.env.EMAIL_IMAP_HOST || '127.0.0.1';
 const EMAIL_IMAP_PORT = process.env.EMAIL_IMAP_PORT || '993';
 
-// === Nocturnal Inc Account Configuration ===
+// === Email account configuration (generic demo defaults; real values via env) ===
 // Passwords loaded from env vars: EMAIL_PASS_<ID> (uppercased, @ and . replaced with _)
-// Or from EMAIL_USER/EMAIL_PASSWORD as the default account
+// Or from EMAIL_USER/EMAIL_PASSWORD as the default account. The email domain is
+// abstracted too: EMAIL_DOMAIN sets it (example.com in the tracked default).
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || 'example.com';
 const DEFAULT_EMAIL = process.env.EMAIL_USER || '';
 const DEFAULT_PASS = process.env.EMAIL_PASSWORD || '';
 
 const ACCOUNTS = [
   // Owner
-  { id: 'jb', email: 'jb@theblacktech.com', name: 'Owner', category: 'owner', icon: '👤', color: '#dc2626',
-    password: process.env.EMAIL_PASSWORD || (DEFAULT_EMAIL === 'jb@theblacktech.com' ? DEFAULT_PASS : '') },
-  { id: 'jon-jj', email: 'jon@j-johnson.com', name: 'JCB Equity', category: 'owner', icon: '👔', color: '#b91c1c',
+  { id: 'owner', email: `owner@${EMAIL_DOMAIN}`, name: 'Owner', category: 'owner', icon: '👤', color: '#dc2626',
+    password: process.env.EMAIL_PASSWORD || (DEFAULT_EMAIL === `owner@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
+  { id: 'investments', email: `investments@${EMAIL_DOMAIN}`, name: 'Investments', category: 'owner', icon: '👔', color: '#b91c1c',
     password: process.env.EMAIL_2_PASSWORD || '' },
 
   // Operations
-  { id: 'jon', email: 'jon@nocturnalinc.com', name: 'Operations', category: 'operations', icon: '🏢', color: '#2563eb',
-    password: process.env.EMAIL_PASS_JON || (DEFAULT_EMAIL === 'jon@nocturnalinc.com' ? DEFAULT_PASS : '') },
-  { id: 'accounts', email: 'accounts@nocturnalinc.com', name: 'Accounts', category: 'operations', icon: '💰', color: '#10b981',
-    password: process.env.EMAIL_PASS_ACCOUNTS || (DEFAULT_EMAIL === 'accounts@nocturnalinc.com' ? DEFAULT_PASS : '') },
-  { id: 'contact', email: 'contact@nocturnalinc.com', name: 'Contact', category: 'operations', icon: '📧', color: '#06b6d4',
-    password: process.env.EMAIL_PASS_CONTACT || (DEFAULT_EMAIL === 'contact@nocturnalinc.com' ? DEFAULT_PASS : '') },
+  { id: 'operations', email: `operations@${EMAIL_DOMAIN}`, name: 'Operations', category: 'operations', icon: '🏢', color: '#2563eb',
+    password: process.env.EMAIL_PASS_JON || (DEFAULT_EMAIL === `operations@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
+  { id: 'accounts', email: `accounts@${EMAIL_DOMAIN}`, name: 'Accounts', category: 'operations', icon: '💰', color: '#10b981',
+    password: process.env.EMAIL_PASS_ACCOUNTS || (DEFAULT_EMAIL === `accounts@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
+  { id: 'contact', email: `contact@${EMAIL_DOMAIN}`, name: 'Contact', category: 'operations', icon: '📧', color: '#06b6d4',
+    password: process.env.EMAIL_PASS_CONTACT || (DEFAULT_EMAIL === `contact@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
 
   // Support
-  { id: 'helpdesk', email: 'helpdesk@nocturnalinc.com', name: 'Helpdesk', category: 'support', icon: '🎫', color: '#f59e0b',
-    password: process.env.EMAIL_PASS_HELPDESK || (DEFAULT_EMAIL === 'helpdesk@nocturnalinc.com' ? DEFAULT_PASS : '') },
+  { id: 'helpdesk', email: `helpdesk@${EMAIL_DOMAIN}`, name: 'Helpdesk', category: 'support', icon: '🎫', color: '#f59e0b',
+    password: process.env.EMAIL_PASS_HELPDESK || (DEFAULT_EMAIL === `helpdesk@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
 
   // Notifications
-  { id: 'nightchute', email: 'nightchute@nocturnalinc.com', name: 'Nightchute', category: 'notifications', icon: '🔔', color: '#8b5cf6',
-    password: process.env.EMAIL_PASS_NIGHTCHUTE || (DEFAULT_EMAIL === 'nightchute@nocturnalinc.com' ? DEFAULT_PASS : '') },
-  { id: 'notification', email: 'notification@nocturnalinc.com', name: 'Notifications', category: 'notifications', icon: '📣', color: '#a78bfa',
-    password: process.env.EMAIL_PASS_NOTIFICATION || (DEFAULT_EMAIL === 'notification@nocturnalinc.com' ? DEFAULT_PASS : '') },
+  { id: 'notify', email: `notify@${EMAIL_DOMAIN}`, name: 'Notify', category: 'notifications', icon: '🔔', color: '#8b5cf6',
+    password: process.env.EMAIL_PASS_NIGHTCHUTE || (DEFAULT_EMAIL === `notify@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
+  { id: 'notification', email: `notification@${EMAIL_DOMAIN}`, name: 'Notifications', category: 'notifications', icon: '📣', color: '#a78bfa',
+    password: process.env.EMAIL_PASS_NOTIFICATION || (DEFAULT_EMAIL === `notification@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
 
   // Services
-  { id: 'openproject', email: 'openproject@nocturnalinc.com', name: 'OpenProject', category: 'services', icon: '📋', color: '#6366f1',
-    password: process.env.EMAIL_PASS_OPENPROJECT || (DEFAULT_EMAIL === 'openproject@nocturnalinc.com' ? DEFAULT_PASS : '') },
-  { id: 'charon', email: 'charon@nocturnalinc.com', name: 'Charon Agent', category: 'services', icon: '🤖', color: '#ec4899',
-    password: process.env.EMAIL_PASS_CHARON || (DEFAULT_EMAIL === 'charon@nocturnalinc.com' ? DEFAULT_PASS : '') },
+  { id: 'openproject', email: `openproject@${EMAIL_DOMAIN}`, name: 'OpenProject', category: 'services', icon: '📋', color: '#6366f1',
+    password: process.env.EMAIL_PASS_OPENPROJECT || (DEFAULT_EMAIL === `openproject@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
+  { id: 'charon-agent', email: `charon@${EMAIL_DOMAIN}`, name: 'Charon Agent', category: 'services', icon: '🤖', color: '#ec4899',
+    password: process.env.EMAIL_PASS_CHARON || (DEFAULT_EMAIL === `charon@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
 
-  // NocturnalPost (Filtering Service)
-  { id: 'rua', email: 'rua@nocturnalpost.com', name: 'NocturnalPost', category: 'filtering', icon: '🛡️', color: '#64748b',
-    password: process.env.EMAIL_PASS_NOCTURNALPOST || (DEFAULT_EMAIL === 'rua@nocturnalpost.com' ? DEFAULT_PASS : '') },
+  // Filtering service
+  { id: 'filtering', email: `filtering@${EMAIL_DOMAIN}`, name: 'Filtering', category: 'filtering', icon: '🛡️', color: '#64748b',
+    password: process.env.EMAIL_PASS_NOCTURNALPOST || (DEFAULT_EMAIL === `filtering@${EMAIL_DOMAIN}` ? DEFAULT_PASS : '') },
 ];
 
 // Category metadata
@@ -58,7 +60,7 @@ const CATEGORIES = [
   { id: 'support', name: 'Support', icon: '🎫', color: '#f59e0b' },
   { id: 'notifications', name: 'Notifications', icon: '🔔', color: '#8b5cf6' },
   { id: 'services', name: 'Services', icon: '⚙️', color: '#6366f1' },
-  { id: 'filtering', name: 'NocturnalPost', icon: '🛡️', color: '#64748b' },
+  { id: 'filtering', name: 'Filtering', icon: '🛡️', color: '#64748b' },
 ];
 
 // Get account by id

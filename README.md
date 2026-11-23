@@ -99,7 +99,7 @@ The rails exist. Each integration flips live from `deploy/pixel-stack.yaml`'s `p
 ```bash
 kubectl apply -f deploy/pixel-stack.yaml   # after docker login ghcr.io
 ```
-Required keys in `pixel-secrets`: `DASHBOARD_PASSWORD`, `PIXEL_SESSION_SECRET`, `PIXEL_API_TOKEN`, `LITELLM_API_KEY` (office chat, briefings, Chief's plan generation). Optional: `LITELLM_API_URL`/`LITELLM_MODEL` (defaults match `litellm.blacktech.dev`). Verify in-pod: `env | grep -c "^LITELLM_API_KEY="` → `1`, then a fetch to `$LITELLM_API_URL/v1/models` → status 200.
+Required keys in `pixel-secrets`: `DASHBOARD_PASSWORD`, `PIXEL_SESSION_SECRET`, `PIXEL_API_TOKEN`, `LITELLM_API_KEY` (office chat, briefings, Chief's plan generation). Optional: `LITELLM_API_URL`/`LITELLM_MODEL` (no tracked default — set your own LiteLLM URL). Verify in-pod: `env | grep -c "^LITELLM_API_KEY="` → `1`, then a fetch to `$LITELLM_API_URL/v1/models` → status 200.
 
 **2. Communications (`MATTERMOST_URL`, `MATTERMOST_TOKEN`, `MATTERMOST_CHANNELS`).**
 

@@ -44,7 +44,7 @@ if (!AUTH_ENABLED) {
 }
 
 // LiteLLM API configuration (OpenAI-compatible)
-const LITELLM_API_URL = process.env.LITELLM_API_URL || 'https://litellm.blacktech.dev';
+const LITELLM_API_URL = process.env.LITELLM_API_URL || '';  // set in .env / pixel-secrets; unset = AI offline (honest)
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || '';
 const LITELLM_MODEL = process.env.LITELLM_MODEL || 'glm-5.3-flash';
 
@@ -337,7 +337,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res) => {
         const emailLines = accounts.map(a => `  - ${a.name} (${a.email}): ${a.configured ? 'connected' : 'not configured'}`).join('\n');
         const agentLines = (config.agents || []).map(a => `  - ${a.name}: ${a.role} in ${a.room || 'off duty'}`).join('\n');
         const configured = accounts.filter(a => a.configured).length;
-        briefingContext = `\n\nCURRENT SYSTEM DATA:\nEmail: ${configured}/${accounts.length} accounts connected\n${emailLines}\n\nAgents on duty:\n${agentLines}\n\nVault: connected to bw.theblacktech.com\nAI: running on ${LITELLM_MODEL} via LiteLLM`;
+        briefingContext = `\n\nCURRENT SYSTEM DATA:\nEmail: ${configured}/${accounts.length} accounts connected\n${emailLines}\n\nAgents on duty:\n${agentLines}\n\nVault: ${process.env.VW_BASE_URL ? 'connected' : 'not configured'}\nAI: running on ${LITELLM_MODEL} via LiteLLM`;
       } catch(e) { /* ignore briefing context errors */ }
     }
 
@@ -667,51 +667,40 @@ app.get('/api/briefing/ai', requireAuth, async (req, res) => {
     const emailSummary = briefing.email.accounts.map(a => `${a.name} (${a.email}): ${a.configured ? 'configured' : 'not configured'}`).join('; ');
     const time = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-    const systemPrompt = `You are Charon, the control-plane agent and concierge of Nocturnal Inc's virtual office. You are delivering a comprehensive morning briefing to Jb, the operator. Be professional, personable, and thorough — like a chief of staff briefing the CEO of a small conglomerate. Cover:
+    const systemPrompt = `You are Charon, the control-plane agent and concierge of the virtual office. You are delivering a comprehensive morning briefing to the operator. Be professional, personable, and thorough — like a chief of staff briefing the CEO of a small company. Cover:
 
-1. Time and date with operating-hours context (Nocturnal is a night-shift operation)
-2. Agent roster status (who's on duty, their roles, where they are, any anomalies). Ghostface is the Owner — Charon reports to Ghostface. Ghostface handles owner email (jb@theblacktech.com).
-3. Business entity overview — Nocturnal Innovations (parent), with sub-entities: Bethea Brothers (real estate), Tercum LLC (consulting), JCB Equity (investments/dividends)
-4. Products & Services portfolio:
-   - NocturnalPost: Newsletter/publication and email filtering/scrubbing service for clients (rua@nocturnalpost.com)
-   - NightChute: Internal email notification service managing notifications across all domains hosted by nocturnalinc.com
-5. Hosted domains status (mail2.nocturnalinc.com / Mailcow): nocturnalinc.com, betheabrothers.com, tercumllc.com, nocturnalpost.com, theblacktech.com, blacktech.dev
-6. Email accounts status (11 accounts: 2 owner + 9 operational across hosted domains). Ghostface handles owner inboxes: jb@theblacktech.com (11,600+ messages) and jon@j-johnson.com (JCB Equity). Charon triages and routes from there.
-7. Infrastructure highlights: gamma k3s cluster, delta (media/arr services), LiteLLm AI inference, OpenProject (op.nocturnalinc.com), Odoo ERP, Paperless document mgmt, Vaultwarden, Grafana monitoring, rustfs/S3 storage, ChromaDB vectors
+1. Time and date with operating-hours context (this is a night-shift operation)
+2. Agent roster status (who's on duty, their roles, where they are, any anomalies). Ghostface is the Owner — Charon reports to Ghostface. Ghostface handles owner email.
+3. Business entity overview — the parent company and its sub-entities as configured in the office data (never invent new ones)
+4. Products & Services portfolio: the publication and email-filtering service, and the internal notification service (as configured in the office data)
+5. Hosted email infrastructure status (the internal mail server)
+6. Email accounts status (owner + operational accounts). Ghostface handles owner inboxes; Charon triages and routes from there.
+7. Infrastructure highlights: k3s cluster, media services, LiteLLM AI inference, project tracker, ERP, document management, Vaultwarden, Grafana monitoring, S3 storage, ChromaDB vectors
 8. Vault status (Vaultwarden)
 9. Contacts database status (CRM)
 10. AI system status (LiteLLM models)
-11. OpenProject status — Nocturnal Innovations (ID 5) with 4 sub-projects: Nocturnal Corporate (ID 9), Nocturnal Products (ID 10), assylummadetrack (ID 6), mchenryteam-realestate (ID 7)
+11. Project-tracker status — parent project and sub-projects as reported by the live API
 12. Any items needing attention, risks, or recommendations
 
 Aim for 400-600 words. Use natural prose with clear section transitions, not bullet points. Sign off as Charon.`;
 
     const userPrompt = `Current time: ${time}
-Organization: Nocturnal Innovations (parent company)
-Operating hours: Night-shift (Nocturnal operates primarily during overnight hours)
+Organization: parent company + configured sub-entities
+Operating hours: Night-shift (the operation runs primarily during overnight hours)
 
 === AGENT ROSTER ===
 Agents on duty:
 ${agentRoster}
 
 === BUSINESS ENTITIES ===
-Nocturnal Innovations — Parent company, operations management, customer service
-  Sub-entities:
-  - Bethea Brothers — Real estate operations
-  - Tercum LLC — Consulting services
-  - JCB Equity — Investment portfolio (dividend income for UBI project, ~$76/mo from 12 positions)
+Parent company — operations management, customer service
+  Sub-entities — as configured in the office data (never invent entities or financial details)
 
 === PRODUCTS & SERVICES ===
-NocturnalPost — Newsletter/publication platform and email filtering/scrubbing service for clients. Email: rua@nocturnalpost.com. Status: active.
-NightChute — Internal email notification service managing email notifications for all domains hosted by nocturnalinc.com. Status: operational.
+Publication/filtering service and internal notification service — status as reported by this office.
 
-=== HOSTED DOMAINS (mail2.nocturnalinc.com / Mailcow) ===
-- nocturnalinc.com — Primary business domain
-- betheabrothers.com — Real estate domain
-- tercumllc.com — Consulting domain
-- nocturnalpost.com — Publication/filtering service domain
-- theblacktech.com — Internal infrastructure (Vaultwarden, GitLab, Nextcloud, Immich)
-- blacktech.dev — Internal services (Mattermost, Paperless, Odoo, rustfs, Grafana, HA)
+=== HOSTED EMAIL ===
+Internal mail server (Mailcow), hostname configured outside this prompt.
 
 === EMAIL ACCOUNTS ===
 Email accounts (${briefing.email.totalConfigured}/${briefing.email.totalAccounts} configured):
@@ -720,37 +709,18 @@ ${briefing.email.error ? 'Email error: ' + briefing.email.error : ''}
 
 === VAULT ===
 Vault: ${briefing.vault.configured ? 'Configured' : 'Not configured'}${briefing.vault.orgConfigured ? ' (org connected)' : ''}${briefing.vault.error ? ' — error: ' + briefing.vault.error : ''}
-(Vaultwarden: 782 ciphers, 60 folders)
 
 === CONTACTS (CRM) ===
 Contacts: ${briefing.contacts.total} contacts, ${briefing.contacts.organizations} organizations${briefing.contacts.error ? ' — error: ' + briefing.contacts.error : ''}
 
 === AI SYSTEMS ===
 AI: ${briefing.ai.available ? 'Online (' + briefing.ai.model + ', ' + (briefing.ai.models || []).length + ' models available)' : 'Offline'}${briefing.ai.error ? ' — error: ' + briefing.ai.error : ''}
-(LiteLLM proxy at litellm.blacktech.dev, models include: glm-5.2, glm-5.3, glm-5.3-flash, deepseek-v4-pro, kimi-k2.7-code, nemotron-3-ultra, llama3.2, llama3.2-gamma, nomic-embed-text, deepseek-v4.1-flash)
 
 === INFRASTRUCTURE ===
-- gamma (192.168.15.230): k3s cluster, LiteLLM, rustfs/S3, ChromaDB, Rundeck, Prowlarr
-- delta (192.168.15.207): Radarr, Sonarr, Lidarr, qBittorrent
-- alpha (192.168.15.75): auxiliary services
-- OpenProject (op.nocturnalinc.com): Project management, 3 projects + 4 sub-projects
-- Odoo (odoo.blacktech.dev): ERP, invoicing, partner management
-- Paperless (paperless.blacktech.dev): Document management
-- Vaultwarden (bw.theblacktech.com): Password/secrets management
-- Grafana: Monitoring and dashboards
-- Graylog: Centralized logging
-- Mattermost (mm.blacktech.dev): Team communications
-- GitLab: Code repositories
-- Nextcloud: File collaboration
-- Immich: Photo management
+Roles only (names/addresses stay outside this prompt): k3s cluster + AI inference, S3 storage, vectors DB, scheduler, indexers, project tracker, ERP, document management, password manager, Grafana, Graylog, Mattermost, GitLab, Nextcloud, Immich.
 
-=== OPENPROJECT STRUCTURE ===
-Nocturnal Innovations (ID 5, parent) with 4 sub-projects:
-  - Nocturnal Corporate (ID 9, nocturnal-corp) — corp tasks, admin, compliance, business ops
-  - Nocturnal Products (ID 10, nocturnal-products) — product dev: NocturnalPost, NightChute
-  - assylummadetrack (ID 6) — legacy project
-  - mchenryteam-realestate (ID 7) — real estate tracking
-Also: Bethea Brothers (separate project), JCB Equity (separate project)
+=== PROJECT TRACKER ===
+Parent project and sub-projects as reported by the live API (counts and IDs, no names).
 
 Deliver the briefing.`;
 
