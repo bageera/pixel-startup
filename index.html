@@ -185,28 +185,28 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
     <!-- Interactive Control Panel -->
     <div id="controlPanel" class="bg-gray-800 rounded-lg shadow-xl w-96 flex flex-col h-[800px] border border-gray-700">
         
-        <!-- Tabs -->
+        <!-- Tabs: icon-only (labels stay sr-only for a11y + i18n) so five tabs never crowd the 384px panel -->
         <div class="flex border-b border-gray-700 bg-gray-900 rounded-t-lg">
-            <button id="tabChat" class="flex-1 py-3 text-sm font-bold text-blue-400 border-b-2 border-blue-400 flex items-center justify-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                <span data-i18n="aiDirector">AI Director</span>
+            <button id="tabChat" title="AI Director" data-i18n-title="aiDirector" aria-label="AI Director" class="flex-1 py-2.5 text-blue-400 border-b-2 border-blue-400 flex items-center justify-center hover:text-blue-300 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span class="sr-only" data-i18n="aiDirector">AI Director</span>
             </button>
-            <button id="tabLog" class="flex-1 py-3 text-sm font-bold text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                <span data-i18n="log">Log</span>
+            <button id="tabLog" title="Log" data-i18n-title="log" aria-label="Log" class="flex-1 py-2.5 text-gray-400 hover:text-gray-200 flex items-center justify-center transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <span class="sr-only" data-i18n="log">Log</span>
             </button>
-            <a href="dashboard.html" target="_blank" id="tabDashboard" class="flex-1 py-3 text-sm font-bold text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-                <span data-i18n="dashboard">Dashboard</span>
+            <a href="dashboard.html" target="_blank" id="tabDashboard" title="Dashboard" data-i18n-title="dashboard" aria-label="Dashboard" class="flex-1 py-2.5 text-gray-400 hover:text-gray-200 flex items-center justify-center transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                <span class="sr-only" data-i18n="dashboard">Dashboard</span>
             </a>
-            <button id="tabEmail" class="flex-1 py-3 text-sm font-bold text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2 transition-colors relative">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                <span data-i18n="email">Email</span>
+            <button id="tabEmail" title="Email" data-i18n-title="email" aria-label="Email" class="flex-1 py-2.5 text-gray-400 hover:text-gray-200 flex items-center justify-center relative transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                 <span id="emailBadge" class="hidden absolute top-1 right-3 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5">0</span>
+                <span class="sr-only" data-i18n="email">Email</span>
             </button>
-            <button id="tabContacts" class="flex-1 py-3 text-sm font-bold text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                <span data-i18n="contacts">Contacts</span>
+            <button id="tabContacts" title="Contacts" data-i18n-title="contacts" aria-label="Contacts" class="flex-1 py-2.5 text-gray-400 hover:text-gray-200 flex items-center justify-center transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <span class="sr-only" data-i18n="contacts">Contacts</span>
             </button>
         </div>
 
