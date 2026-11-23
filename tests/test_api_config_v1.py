@@ -60,7 +60,12 @@ def test_v1_config_shape_and_startup_roundtrip(tmp_path) -> None:
             base = r.json()
             chief = next(a for a in base["agents"] if a["name"] == "Ghostface")
             assert chief["role"] == "Owner"
-            assert base["startup"] == {"direction": "", "goals": [], "mood": "focused"}
+            assert base["startup"] == {
+                "direction": "",
+                "goals": [],
+                "mood": "focused",
+                "chief_harness": "",
+            }
 
             r = await c.post(
                 "/api/v1/config",

@@ -865,3 +865,21 @@ Unmapped room names fall back to the closest available room so "everyone to
 the Lounge" fans out instead of `[]`. Live-verified: everyone → per-character
 actions, Archives/sit contract exact, no-auth 401, status lists glm-5.3-flash.
 Gate: 193 pytest (4 new, stubbed transport) / pyright 0 / ruff clean.
+
+### Chief of Staff harness toggle (2026-11-23)
+
+Owner asks: pick which harness leads, then the chat "evaluates and handles
+tasks or reports on completed ones". Built on what already exists, honestly:
+- `startup.chief_harness` ("", hermes, openclaw) merged strictly in
+  `_merge_startup` (unknown values ignored, erasure-safe) via the SAME
+  owner-auth /api/config channel the 5 s sync loop already uses.
+- `/api/ai/chat {prompt, mode:"chief"}`: context = the G7/G8 adapter probe
+  (`gateway.health`) + the REAL tasks table + roster — never invented; the
+  nav-only Director stays when nothing is selected (400 else).
+- Task SUBMISSION through hermes/openclaw remains honestly unsupported
+  (existing B1/B5 blockers, `supported: false` by interface discipline); the
+  chief only reports what rows show and routes handling through the office
+  delegation plan + owner approval. No new harness interfaces invented.
+- Live: chief answer cited the real gateway (online, pid, 1 active agent,
+  mattermost) and "no tasks" truthfully; nav mode byte-identical as before.
+Gates: 195 pytest (2 new) / 65 npm / pyright 0 / ruff clean+fmt. Local only.

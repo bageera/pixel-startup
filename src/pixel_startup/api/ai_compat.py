@@ -12,6 +12,7 @@ registry — never a private fetch.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -19,7 +20,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from pixel_startup.api.office_compat import office_from_app, office_write_auth
+from pixel_startup.capabilities.delegation import HARNESS_PROVIDER
 from pixel_startup.integrations.infra import InfraFailure, InfraUnavailable
+from pixel_startup.persistence.store import EmployeeStore
 
 router = APIRouter()
 
@@ -32,8 +35,6 @@ def _nav_system_prompt(request: Request) -> str:
     """Server-owned contract the office chat form expects: the client builds the
     same prompt locally but only ever sends {prompt} — node's generic
     'keep responses brief' made every navigation command a JSON-parse failure."""
-    from pixel_startup.persistence.store import EmployeeStore
-
     db = request.app.state.container.providers["db"]
     try:
         chars = [e["display_name"] for e in EmployeeStore(db).all()]
@@ -65,6 +66,73 @@ def _llm_unavailable(exc: Exception) -> JSONResponse:
     return JSONResponse({"error": f"LiteLLM API error: {detail}"}, status_code=502)
 
 
+def _chief_context(request: Request, harness: str) -> str:
+    """Grounded context from ACTUAL state only: harness probe (the adapters'
+    G7/G8 documented surfaces) + the office task table (real rows) + roster.
+    Nothing invented; a missing table or probe failure reads as its honest state."""
+    db = request.app.state.container.providers["db"]
+    parts: list[str] = []
+    registry = request.app.state.container.registry
+    provider = HARNESS_PROVIDER.get(harness)
+    reg = registry.get(provider) if provider else None
+    probe: dict = {}
+    try:
+        resp = reg.handler.invoke("gateway.health") if reg and reg.handler else None
+        if resp and resp.get("supported"):
+            probe = resp.get("result") if isinstance(resp.get("result"), dict) else {}
+    except Exception:  # noqa: BLE001 - probe failure is an honest offline fact
+        probe = {}
+    probe_summary = (
+        f"harness online: {bool(probe.get('online'))}"
+        f"; gateway: {json.dumps((probe.get('gateway') or {}))[:160]}"
+        f"; platforms: {probe.get('platforms') or []}"
+        if probe
+        else "harness probe unavailable (honest-offline)"
+    )
+    parts.append(f"CONNECTED HARNESS ({harness}): {probe_summary}")
+    task_rows: list[dict] = []
+    try:
+        cur = db.conn.execute(
+            "SELECT task_id, objective, status, assigned_employee_id FROM tasks"
+            " ORDER BY updated_at DESC LIMIT 12"
+        )
+        task_rows = [dict(r) for r in cur.fetchall()]
+        counts = {
+            s: c for (s, c) in db.conn.execute("SELECT status, COUNT(*) FROM tasks GROUP BY status")
+        }
+    except Exception:  # noqa: BLE001
+        counts = {}
+    parts.append(f"TASK COUNTS BY STATUS: {counts or 'no tasks'}")
+    if task_rows:
+        rows = "; ".join(
+            f"{r['task_id']} [{r['status']}] {r['objective'][:80]}"
+            f" -> {r['assigned_employee_id'] or 'unassigned'}"
+            for r in task_rows
+        )
+        parts.append(f"RECENT TASKS (real rows, newest first): {rows}")
+    try:
+        roster = [
+            f"{e['display_name']} ({e['lifecycle']}, harness {e['harness']})"
+            for e in EmployeeStore(db).all()
+        ]
+        parts.append("ROSTER: " + "; ".join(roster))
+    except Exception:  # noqa: BLE001
+        parts.append("ROSTER: unavailable")
+    return "\n".join(parts)
+
+
+_CHIEF_SYSTEM = (
+    "You are the Chief of Staff of this virtual office, answering the owner."
+    " Work from ONLY the provided data - never invent capabilities, tasks or"
+    " results. When asked to EVALUATE: assess what is feasible given the roster"
+    " and harness state. When asked to REPORT: summarize the real task rows."
+    " If the owner asks you to HANDLE a task: name which employee/harness would"
+    " get it and state that dispatch goes through the office delegation plan"
+    " with owner approval - do not claim work has started unless the task rows"
+    " show it. Keep answers short plain text, no markdown headings."
+)
+
+
 @router.post("/api/ai/chat")
 async def ai_chat(request: Request, _auth: str = Depends(office_write_auth)) -> Any:
     try:
@@ -75,6 +143,8 @@ async def ai_chat(request: Request, _auth: str = Depends(office_write_auth)) -> 
     prompt = prompt.strip()
     if not prompt:
         return JSONResponse({"error": "Missing prompt"}, status_code=400)
+    if (body.get("mode") if isinstance(body, dict) else None) == "chief":
+        return await _chief_chat(request, prompt)
     try:
         result = request.app.state.container.registry.invoke_provider(
             "litellm",
@@ -92,6 +162,45 @@ async def ai_chat(request: Request, _auth: str = Depends(office_write_auth)) -> 
     except Exception as exc:  # noqa: BLE001 - audited by the registry, re-raised here
         return _llm_unavailable(exc)
     return {"response": result.get("content", ""), "model": result.get("model")}
+
+
+async def _chief_chat(request: Request, prompt: str) -> JSONResponse:
+    office = office_from_app(request)
+    harness = str(getattr(office, "startup", {}).get("chief_harness", "") or "").lower()
+    if harness not in HARNESS_PROVIDER:
+        return JSONResponse(
+            {
+                "error": "no Chief of Staff harness selected (owner sets it in the chat panel)",
+            },
+            status_code=400,
+        )
+    try:
+        result = request.app.state.container.registry.invoke_provider(
+            "litellm",
+            "chat.completions",
+            {
+                "messages": [
+                    {"role": "system", "content": _CHIEF_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": f"{_chief_context(request, harness)}\n\nOWNER: {prompt}",
+                    },
+                ],
+                "max_tokens": 2048,
+            },
+        )
+    except (InfraFailure, InfraUnavailable) as exc:
+        return _llm_unavailable(exc)
+    except Exception as exc:  # noqa: BLE001 - audited by the registry, re-raised here
+        return _llm_unavailable(exc)
+    return JSONResponse(
+        {
+            "response": result.get("content", ""),
+            "model": result.get("model"),
+            "mode": "chief",
+            "harness": harness,
+        }
+    )
 
 
 @router.get("/api/ai/status")

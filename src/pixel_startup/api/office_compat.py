@@ -218,6 +218,22 @@ class OfficeState:
                 merged["mood"] = new["mood"].lower()  # G30-F: CHO view preference
             if isinstance(new.get("scene_components"), bool):
                 merged["scene_components"] = new["scene_components"]  # G32-A: office overlay flag
+            chief = new.get("chief_harness")
+            if isinstance(chief, str):
+                # Chief of Staff harness selection; "" = nav-only AI Director.
+                # ponytail: the two names are the registry's agent_harness set;
+                # derive from the registry when a third harness lands.
+                merged["chief_harness"] = (
+                    chief.lower()
+                    if chief.lower()
+                    in (
+                        "",
+                        "hermes",
+                        "openclaw",
+                    )
+                    else merged.get("chief_harness", "")
+                )
+        merged.setdefault("chief_harness", "")
         merged.setdefault("direction", "")
         merged.setdefault("goals", [])
         merged.setdefault("mood", "focused")

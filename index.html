@@ -234,6 +234,14 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
 
             <!-- Quick Options / Rooms -->
             <div class="p-3 bg-gray-900 border-t border-gray-700">
+                <div class="mb-2">
+                    <label for="chiefHarness" class="text-[10px] uppercase tracking-wider text-gray-400 mr-2" title="Chief of Staff: the connected harness that evaluates and reports on tasks">Chief of Staff</label>
+                    <select id="chiefHarness" class="bg-gray-900 text-gray-200 text-xs border border-gray-600 rounded px-2 py-1 focus:outline-none focus:border-blue-500">
+                        <option value="">Director (movement only)</option>
+                        <option value="hermes">Hermes</option>
+                        <option value="openclaw">OpenClaw</option>
+                    </select>
+                </div>
                 <div class="flex flex-wrap gap-2 mb-2" id="quickRooms">
                     <!-- Filled with rooms from dashboard -->
                 </div>
@@ -1632,11 +1640,13 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
             // Calling Ollama API (server owns the nav JSON contract now)
             addChatMessage('AI Director', 'Thinking...', 'ai');
 
+            const chiefMode = document.getElementById('chiefHarness').value !== '';
+
             // Call Ollama API via server-side proxy
             fetch('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: command })
+                body: JSON.stringify(chiefMode ? { prompt: command, mode: 'chief' } : { prompt: command })
             })
             .then(res => {
                 if (res.status === 401) throw new Error(t('loginNeeded'));
@@ -1646,6 +1656,18 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
             .then(data => {
                 const responseText = data.response || '';
                 if (typeof responseText !== 'string') throw new Error(t('ollamaConnError'));
+
+                // Chief mode answers are prose (the chief evaluates/reports);
+                // nav mode stays strict JSON actions.
+                if (chiefMode && data.mode === 'chief') {
+                    const msgs = document.getElementById('chatMessages');
+                    if (msgs.lastChild && msgs.lastChild.textContent.includes('Thinking...')) {
+                        msgs.lastChild.remove();
+                    }
+                    addChatMessage('Chief (' + data.harness + ')', responseText, 'ai');
+                    return;
+                }
+
                 let actions = [];
                 try {
                     actions = JSON.parse(responseText.trim());
@@ -1776,7 +1798,7 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                         }
                     });
                     
-                    // Save back to server
+                // Save back to server
                     await fetch('/api/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1785,6 +1807,32 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                 } catch(e) {}
             }
         }, 5000);
+
+        // Chief of Staff harness toggle: persist via the same owner config channel
+        (async () => {
+        const chiefSel = document.getElementById('chiefHarness');
+        try {
+            const cfg = await (await fetch('/api/config')).json();
+            const saved = ((cfg.startup || {}).chief_harness) || '';
+            if (['hermes', 'openclaw'].includes(saved)) chiefSel.value = saved;
+        } catch(e) {}
+        chiefSel.addEventListener('change', async () => {
+            try {
+                const config = await (await fetch('/api/config')).json();
+                config.startup = Object.assign({}, config.startup, { chief_harness: chiefSel.value });
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                addChatMessage('System', chiefSel.value
+                    ? 'Chief of Staff is now ' + chiefSel.value + '. Chat messages will be evaluated and handled by it, or report on completed tasks.'
+                    : 'Chief of Staff cleared: Director handles movement commands only.', 'ai');
+            } catch(e) {
+                addChatMessage('System', 'Could not save the Chief of Staff selection (owner session required).', 'ai');
+            }
+        });
+        })();
 
         // NOTE: Removed position sync polling from server
         // because it caused "teleporting" of characters between clients.

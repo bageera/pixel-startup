@@ -123,3 +123,66 @@ def test_g32_ai_status_lists_models():
             assert r.json().get("deprecated") is None
 
     anyio.run(drive)
+
+
+def test_g32_chief_toggle_persists_and_rejects_unknown():
+    async def drive():
+        async with client(Path(__file__).parent / "tmp-ai") as c:
+            # owner persists the chief harness via the same config channel
+            save = await c.post(
+                "/api/config",
+                headers=AUTH,
+                json={"agents": [], "rooms": [], "startup": {"chief_harness": "hermes"}},
+            )
+            assert save.status_code == 200
+            startup = save.json()["config"]["startup"]
+            assert startup["chief_harness"] == "hermes"
+            # an unknown value must be ignored, not invented
+            bad = await c.post(
+                "/api/config",
+                headers=AUTH,
+                json={"agents": [], "rooms": [], "startup": {"chief_harness": "evil"}},
+            )
+            assert bad.json()["config"]["startup"]["chief_harness"] == "hermes"
+            # default shape: an office with no choice gets ""
+            wiped = await c.post(
+                "/api/config",
+                headers=AUTH,
+                json={"agents": [], "rooms": [], "startup": {"chief_harness": ""}},
+            )
+            assert wiped.json()["config"]["startup"]["chief_harness"] == ""
+
+    anyio.run(drive)
+
+
+def test_g32_chief_mode_requires_harness_and_uses_real_context():
+    async def drive():
+        calls: list = []
+        async with client(Path(__file__).parent / "tmp-ai", litellm_calls=calls) as c:
+            no_choice = await c.post(
+                "/api/ai/chat", headers=AUTH, json={"prompt": "status report", "mode": "chief"}
+            )
+            assert no_choice.status_code == 400  # nothing selected yet — honest ask to set it
+
+            await c.post(
+                "/api/config",
+                headers=AUTH,
+                json={"agents": [], "rooms": [], "startup": {"chief_harness": "hermes"}},
+            )
+            chief = await c.post(
+                "/api/ai/chat",
+                headers=AUTH,
+                json={"prompt": "report on our tasks", "mode": "chief"},
+            )
+            assert chief.status_code == 200
+            body = chief.json()
+            assert body["response"] == "chat ok" and body["mode"] == "chief"
+            assert body["harness"] == "hermes"
+            system = calls[0]["messages"][0]["content"]
+            assert "Chief of Staff" in system  # chief system prompt, not the nav contract
+            # grounded ONLY in observed state: the G8 probe result + real task rows
+            owner = calls[0]["messages"][1]["content"]
+            assert "CONNECTED HARNESS (hermes)" in owner
+            assert "TASK COUNTS BY STATUS" in owner and "ROSTER:" in owner
+
+    anyio.run(drive)
