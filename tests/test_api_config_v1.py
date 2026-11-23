@@ -66,6 +66,8 @@ def test_v1_config_shape_and_startup_roundtrip(tmp_path) -> None:
                 "mood": "focused",
                 "chief_harness": "",
                 "chief_channels": [],
+                "office_theme": "garage",
+                "auto_office": False,
             }
 
             r = await c.post(

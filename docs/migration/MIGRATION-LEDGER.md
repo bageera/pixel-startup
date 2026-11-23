@@ -900,3 +900,24 @@ in. Built on the existing G13 comms rows, honestly:
   set up"). No delivery code added for unconfigured channels.
 - Tests moved to per-run temp dirs (test state leaked through shared tmp-ai).
 Gates: 197 pytest (channels test) / 65 npm / pyright 0 / ruff clean. LOCAL.
+
+### G33 — Office of Requirement (2026-11-23)
+
+Owner directive: keep the playful office as the core; the environment is
+imaginative while the organization is real; the CHO never designs rooms.
+Shipped the architecture spine:
+- `graph/office_gen.py` — topology / layout / theme layers, pure JSON out.
+  Assignment = tasks rows + working/waiting lifecycle; registered-only staff
+  sit at communal benches; disconnected harnesses keep stations marked offline.
+- `api/office_layout.py` — layout GET (ETag, 304 when the structure is
+  unchanged), apply (owner; materializes), theme (owner; cosmetic only,
+  structural key untouched).
+- Dashboard 'Chief' strip: theme select + Grow office; office page follows
+  the materialized server rooms (procedural wins over the painted cache).
+- Live: stage 1 with the real roster (CHO + 2 harness bays + communal row)
+  materialized into the running office; firehouse theme switched environments
+  without moving a single structural fact; nav + characters still boot clean.
+- Honest ceilings (documented): dedicated theme art is a later art pass
+  (theme reuses existing environment assets); team-grouping beyond harness
+  bays needs a real grouping signal; floor-2 rendering waits floor navigation.
+Gates: 203 pytest (7 G33 tests) / 65 npm / pyright 0 / ruff clean. LOCAL.

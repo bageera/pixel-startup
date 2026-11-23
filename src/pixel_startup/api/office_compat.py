@@ -240,8 +240,15 @@ class OfficeState:
                 merged["chief_channels"] = sorted(
                     {c for c in chans if isinstance(c, str) and c in ("mattermost", "email")}
                 )
+            ot = new.get("office_theme")
+            if isinstance(ot, str) and ot in ("garage", "subbasement", "firehouse"):
+                merged["office_theme"] = ot  # G33: theme interpretation layer
+            if isinstance(new.get("auto_office"), bool):
+                merged["auto_office"] = new["auto_office"]  # G33: materialize toggle
         merged.setdefault("chief_harness", "")
         merged.setdefault("chief_channels", [])
+        merged.setdefault("office_theme", "garage")
+        merged.setdefault("auto_office", False)
         merged.setdefault("direction", "")
         merged.setdefault("goals", [])
         merged.setdefault("mood", "focused")

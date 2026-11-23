@@ -28,6 +28,7 @@ from pixel_startup.api import (
     gateway,
     health,
     office_compat,
+    office_layout,
     office_state,
 )
 from pixel_startup.api import environment as environment_api
@@ -511,6 +512,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(office_state.router)
     app.include_router(chief.router)  # G23 BEFORE the gateway catch-all: native wins
     app.include_router(ai_compat.router)  # AI Director chat/status: BEFORE the catch-all
+    app.include_router(office_layout.router)  # G33 Office of Requirement
     from pixel_startup.api import graph as graph_api
 
     app.include_router(graph_api.router)  # G30: living-startup organizational graph

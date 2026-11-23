@@ -844,7 +844,43 @@ if ((navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (na
                         `<input type="checkbox" data-chief-channel="${id}" ${fixed ? 'checked disabled' : (_chiefAllowed.includes(id) ? 'checked' : '')} style="vertical-align:middle;"> ${label}` +
                         (configured === false ? ' <i style="opacity:.6;">(not configured)</i>' : '') +
                         `</label>`).join('') +
-                    `<button id="chiefChannelsSave" class="bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-bold py-0.5 px-2 rounded">Save</button> <span id="chiefMsg" style="color:var(--ok);"></span>`;
+                    `<button id="chiefChannelsSave" class="bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-bold py-0.5 px-2 rounded">Save</button> <span id="chiefMsg" style="color:var(--ok);"></span>` +
+                    `<span style="border-left:1px solid #26263a; padding-left:10px;">Office grows with the org: ` +
+                    `<select id="chiefThemeSel" class="bg-slate-900 border border-slate-600 rounded text-xs p-0.5 text-slate-200" title="Office of Requirement theme — same organization, different interpretation">
+                        <option value="garage">Garage (bench rows)</option>
+                        <option value="subbasement">Sub-basement (consoles)</option>
+                        <option value="firehouse">Firehouse (equipment bays)</option>
+                    </select> ` +
+                    `<button id="officeApplyBtn" class="bg-green-700 hover:bg-green-600 text-white text-xs font-bold py-0.5 px-2 rounded" title="Materialize the office from the current organization (assigned workers only — existence never mints furniture). One structural change = one regeneration, never per-frame.">Grow office</button> ` +
+                    `<span id="officeMsg" style="color:var(--ok);"></span></span>`;
+                document.getElementById('chiefChannelsSave').onclick = saveChiefChannels;
+                const themeSel = document.getElementById('chiefThemeSel');
+                try {
+                    const cfg = await (await fetch('/api/config')).json();
+                    themeSel.value = (cfg.startup || {}).office_theme || 'garage';
+                } catch (e) {}
+                themeSel.addEventListener('change', async () => {
+                    const t = await fetch('/api/v1/office/layout/theme', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ theme: themeSel.value })
+                    });
+                    const o = document.getElementById('officeMsg');
+                    if (t.ok) { o.textContent = 'theme saved — press Grow office to materialize'; }
+                    else { o.style.color = 'var(--bad)'; o.textContent = 'theme rejected'; }
+                });
+                document.getElementById('officeApplyBtn').onclick = async () => {
+                    const o = document.getElementById('officeMsg');
+                    try {
+                        const r = await fetch('/api/v1/office/layout/apply', { method: 'POST' });
+                        if (!r.ok) throw new Error('http ' + r.status);
+                        const data = await r.json();
+                        o.textContent = `materialized: ${data.rooms.length} rooms · stage ${data.stage} · ${data.environment}`;
+                        setTimeout(() => { o.textContent = ''; }, 4000);
+                    } catch (e) {
+                        o.style.color = 'var(--bad)';
+                        o.textContent = 'grow failed (' + e.message + ')';
+                    }
+                };
                 document.getElementById('chiefChannelsSave').onclick = saveChiefChannels;
             } catch (e) {
                 body.textContent = 'chief channels unavailable (' + e.message + ')';

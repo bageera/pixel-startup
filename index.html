@@ -1216,11 +1216,11 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                     console.log('Using default collision map');
                 }
 
-                // Load rooms from server
+                // Load rooms from server (G33 authority: the materialized layout wins)
                 try {
                     const roomsResponse = await fetch('/api/rooms');
                     const roomsData = await roomsResponse.json();
-                    if (roomsData && Array.isArray(roomsData)) {
+                    if (roomsData && Array.isArray(roomsData) && roomsData.length > 0) {
                         window.roomsInfo = roomsData.map(r => ({
                             id: r.id,
                             name: r.name,
@@ -1228,7 +1228,9 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                             y: r.tiles && r.tiles.length > 0 ? r.tiles[0].y : 0,
                             tiles: r.tiles || []
                         }));
+                        window.__roomsFromServer = true;
                         console.log('Rooms loaded from server:', window.roomsInfo.length);
+                        if (typeof renderQuickRooms === 'function') renderQuickRooms();  // G33: follow the materialized layout
                     }
                 } catch(e) {
                     console.log('Using default rooms');
@@ -1401,10 +1403,12 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
         // --- AI Chat Functions ---
 
         // Read room mapping from dashboard if exists, otherwise use static defaults
+        // G33: the server's materialized layout (/api/rooms, procedural) wins;
+        // localStorage is only the offline/painted fallback.
         window.roomsInfo = [];
         try {
             const savedRooms = localStorage.getItem('pixelOfficeRooms');
-            if (savedRooms) {
+            if (savedRooms && !window.__roomsFromServer) {
                 const parsedRooms = JSON.parse(savedRooms);
                 // Convert from painted format (array of tiles) to quick format (a central x,y point)
                 window.roomsInfo = parsedRooms.map(r => {
@@ -1444,8 +1448,13 @@ window.addEventListener('DOMContentLoaded', () => document.getElementById('ui').
                 quicks.appendChild(btn);
             });
         }
-        
+
+        // G33: quick rooms follow the server-materialized layout; re-render
+        // when the async load replaces roomsInfo with the authoritative list.
         renderQuickRooms();
+        const _origRebuild = () => setTimeout(renderQuickRooms, 0);
+        document.addEventListener('DOMContentLoaded', _origRebuild);
+        window.addEventListener('load', _origRebuild);
 
         function appendToPrompt(text) {
             const input = document.getElementById('aiPromptInput');
