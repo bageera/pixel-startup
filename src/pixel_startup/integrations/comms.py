@@ -46,7 +46,24 @@ class MattermostAdapter:
 
     @property
     def configured(self) -> bool:
-        return bool(self._url and self._token and self._client)
+        return bool(self._url and self._token)
+
+    def probe(self) -> dict:
+        if not self.configured:
+            raise Exception("not configured")
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"{self._url}/api/v4/users/me",
+            headers={"Authorization": f"Bearer {self._token}"},
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=5)
+            if resp.status == 200:
+                return {"online": True}
+        except Exception:
+            pass
+        return {"online": False}
 
     def post(self, channel: str, text: str, correlation_id: str) -> dict:
         if channel not in self._channels:

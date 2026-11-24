@@ -97,8 +97,13 @@ class HermesHomeAdapter:
     def profiles(self) -> list[str]:
         profiles_dir = self.home / "profiles"
         names = ["default"]
-        if profiles_dir.is_dir():
-            names += sorted(p.name for p in profiles_dir.iterdir() if p.is_dir())
+        try:
+            if profiles_dir.is_dir():
+                names += sorted(p.name for p in profiles_dir.iterdir() if p.is_dir())
+        except OSError:
+            # RO hostPath into a foreign-uid hermes home (e.g. profiles/ unreadable
+            # to the container uid): EACCES must stay honest, never fatal.
+            pass
         return names
 
     def invoke(self, operation: str, payload: dict | None = None) -> dict:

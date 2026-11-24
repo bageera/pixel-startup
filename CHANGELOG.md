@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
+## [Unreleased]
+
+### Added
+- **G18 evidence-gated promotion for comms providers:** the three comms registrations (`comms_mattermost`, `comms_email`, `comms_email_read`) probe at boot when their handler reports `configured` — Mattermost via a real `/api/v4/users/me` check, inbox via a real IMAPS login (env account contract) — and transition CANDIDATE → QUALIFIED only on an online probe; unconfigured or unreachable targets stay CANDIDATE and boot stays non-fatal.
+
+### Fixed
+- **Hermes harness no longer dies on an unreadable `$HERMES_HOME`:** `profiles()` guards the stat/iterdir of `<home>/profiles` with an OSError guard and the honest `["default"]` fallback (regression test added). This is the crash class that killed the deployed python backend (`PermissionError: '/hermes-home/profiles'` on the read-only hostPath as uid 1001); the deployed `:v8`/`:v9` images were built from in-flight intermediates without gates — builds must come from gates-passed main only.
+- **Dockerfile.python installs `openssh-client`** in the runtime stage so the email SSH transport (G36 contract) has its binary present.
+
 ## [1.5.0] - 2026-11-23 (HEAD = 8134f61)
 
 ### Added

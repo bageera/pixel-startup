@@ -71,6 +71,16 @@ def test_profile_discovery_and_liveness_helper(hermes_home) -> None:
     assert _pid_alive("not-a-pid") is False
 
 
+def test_unreadable_profiles_dir_falls_back_to_default(hermes_home) -> None:
+    profiles_dir = hermes_home / "profiles"
+    os.chmod(profiles_dir, 0o200)  # write-only for the current uid → iterdir EACCES
+    try:
+        probe = _adapter(hermes_home).invoke("gateway.health")["result"]
+    finally:
+        os.chmod(profiles_dir, 0o755)
+    assert probe["profiles"] == ["default"]  # honest fallback, not a startup crash
+
+
 def test_unsupported_task_operations_explicit(hermes_home) -> None:
     adapter = _adapter(hermes_home)
     for op in ("task.submit", "task.result", "task.cancel", "activity.observe"):

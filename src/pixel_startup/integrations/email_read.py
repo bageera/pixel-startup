@@ -255,6 +255,25 @@ class EmailInboxAdapter:
         )
         return bool(imap_host) or ssh
 
+    def probe(self) -> dict:
+        if not self.configured:
+            raise Exception("not configured")
+        import imaplib
+
+        host = os.environ.get("EMAIL_IMAP_HOST") or ""
+        port = int(os.environ.get("EMAIL_IMAP_PORT") or "993")
+        user = os.environ.get("EMAIL_USER") or ""
+        pwd = os.environ.get("EMAIL_PASSWORD") or ""
+        if not (host and user and pwd):
+            return {"online": False}
+        try:
+            m = imaplib.IMAP4_SSL(host, port)
+            m.login(user, pwd)
+            m.logout()
+            return {"online": True}
+        except Exception:
+            return {"online": False}
+
     def _account(self, account_id: str) -> dict | None:
         meta = next((a for a in _ACCOUNTS if a["id"] == account_id), None)
         if meta is None or "." in account_id:

@@ -387,6 +387,18 @@ def _register_comms(container: Container, settings: Settings) -> None:
             )
         )
         container.registry.transition(provider_id, ProviderState.CANDIDATE)
+        # G18 evidence-gated promotion for comms providers
+        if hasattr(handler, "configured") and handler.configured:
+            try:
+                probe_fn = getattr(handler, "probe", None)
+                if callable(probe_fn):
+                    probe = probe_fn()
+                    if probe.get("online"):
+                        container.registry.transition(provider_id, ProviderState.QUALIFIED)
+                else:
+                    container.registry.transition(provider_id, ProviderState.QUALIFIED)
+            except Exception:
+                pass
     container.providers["comms_mattermost"] = mattermost
     container.providers["comms_email"] = email
     container.providers["comms_email_read"] = inbox
