@@ -393,7 +393,7 @@ def _register_comms(container: Container, settings: Settings) -> None:
                 probe_fn = getattr(handler, "probe", None)
                 if callable(probe_fn):
                     probe = probe_fn()
-                    if probe.get("online"):
+                    if isinstance(probe, dict) and probe.get("online"):
                         container.registry.transition(provider_id, ProviderState.QUALIFIED)
                 else:
                     container.registry.transition(provider_id, ProviderState.QUALIFIED)
